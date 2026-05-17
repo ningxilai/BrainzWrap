@@ -1,8 +1,25 @@
 ;;; vino-book.el --- Book collectible preset for vino -*- lexical-binding: t; -*-
 ;;
-;; Book collectible based on BookBrainz model.
-;; Uses original vino patterns: vulpea-create, vulpea-select-from, etc.
+;; Author: opencode
+;; Keywords: tools, book, bookbrainz
+;; URL: https://github.com/emacs-conf/vino
+;; SPDX-License-Identifier: CC0-1.0
+;;
+;; To the extent possible under law, the author has waived all
+;; copyright and related or neighboring rights to this work.
+;;
+;;; Commentary:
+;;
+;; Book collectible based on the BookBrainz data model.
+;; Provides 6 core entities (Author, Publisher, Series, Work,
+;; Edition Group, Edition), one secondary entity (Author Credit),
+;; and relationship management functions.
+;;
+;; Package-Requires: ((emacs "29.1") (vino "0.5.0") (vulpea "2.0.0") (dash "2.19.1") (s "1.13.0"))
+;;
+;;; Code:
 
+(require 'vino)
 (require 'vulpea)
 (require 'dash)
 (require 's)
@@ -31,9 +48,41 @@
   '(:file-name "book/edition-group/${id}.org" :tags ("book" "edition-group"))
   "Template for Edition Group collectibles.")
 
-(defvar Vino-book-edition-template
+(defvar vino-book-edition-template
   '(:file-name "book/edition/${id}.org" :tags ("book" "edition"))
   "Template for Edition collectibles.")
+
+(defvar vino-book-author-types
+  '("Person" "Group" "Other")
+  "BookBrainz Author types.")
+
+(defvar vino-book-publisher-types
+  '("Publisher" "Imprint" "Other")
+  "BookBrainz Publisher types.")
+
+(defvar vino-book-series-types
+  '("Work series" "Publisher series" "Edition series"
+    "Journal series" "Magazine series" "Other")
+  "BookBrainz Series types.")
+
+(defvar vino-book-work-types
+  '("Novel" "Short story" "Poem" "Essay" "Play" "Biography"
+    "Non-fiction" "Anthology" "Collection" "Periodical" "Other")
+  "BookBrainz Work types.")
+
+(defvar vino-book-edition-group-types
+  '("Single work" "Collected" "Anthology" "Periodical" "Other")
+  "BookBrainz Edition Group types.")
+
+(defvar vino-book-edition-formats
+  '("Hardcover" "Paperback" "Mass-market paperback"
+    "Library binding" "eBook" "Audiobook (Digital)"
+    "Audiobook (Physical)" "CD" "Other")
+  "BookBrainz Edition formats.")
+
+(defvar vino-book-edition-statuses
+  '("Official" "Draft" "Proof" "Advance Reading Copy" "Other")
+  "BookBrainz Edition statuses.")
 
 ;; ============================================================================
 ;; CORE ENTITY: Author
@@ -43,25 +92,29 @@
 (defun vino-book-author-create (&optional title)
   "Create an Author entity (writer, translator, editor, etc.)."
   (interactive)
-  (let ((title (or title (vino--read-string "Author: "))))
-    (vulpea-create
-     title
-     (plist-get vino-book-author-template :file-name)
-     :tags (plist-get vino-book-author-template :tags))))
+  (let* ((title (or title (vino--read-string "Author: ")))
+         (type (completing-read "Type: " vino-book-author-types nil t))
+         (sort-name (read-string "Sort name: " title))
+         (gender (read-string "Gender: "))
+         (begin (read-string "Birth date: "))
+         (end (read-string "Death date: "))
+         (note (vulpea-create
+                title
+                (plist-get vino-book-author-template :file-name)
+                :tags (plist-get vino-book-author-template :tags)
+                :meta `(("type" . ,type)
+                        ("sort_name" . ,sort-name)
+                        ("gender" . ,gender)
+                        ("begin" . ,begin)
+                        ("end" . ,end)))))
+    (vulpea-db-update-file (vulpea-note-path note))
+    note))
 
 ;;;###autoload
 (defun vino-book-author-select ()
   "Select an Author entity."
   (interactive)
-  (let ((note (vulpea-select-from
-              "Author"
-              (vulpea-db-query-by-tags-every '("book" "author"))
-              :expand-aliases t)))
-    (if (vulpea-note-id note)
-        note
-      (if (y-or-n-p (format "Create %s? " (vulpea-note-title note)))
-          (vino-book-author-create (vulpea-note-title note))
-        note))))
+  (vino--select2 "Author" '("book" "author") #'vino-book-author-create))
 
 ;; ============================================================================
 ;; CORE ENTITY: Publisher
@@ -71,25 +124,29 @@
 (defun vino-book-publisher-create (&optional title)
   "Create a Publisher entity (company or imprint)."
   (interactive)
-  (let ((title (or title (vino--read-string "Publisher: "))))
-    (vulpea-create
-     title
-     (plist-get vino-book-publisher-template :file-name)
-     :tags (plist-get vino-book-publisher-template :tags))))
+  (let* ((title (or title (vino--read-string "Publisher: ")))
+         (type (completing-read "Type: " vino-book-publisher-types nil t))
+         (sort-name (read-string "Sort name: " title))
+         (area (read-string "Area: "))
+         (begin (read-string "Founded date: "))
+         (end (read-string "Dissolved date: "))
+         (note (vulpea-create
+                title
+                (plist-get vino-book-publisher-template :file-name)
+                :tags (plist-get vino-book-publisher-template :tags)
+                :meta `(("type" . ,type)
+                        ("sort_name" . ,sort-name)
+                        ("area" . ,area)
+                        ("begin" . ,begin)
+                        ("end" . ,end)))))
+    (vulpea-db-update-file (vulpea-note-path note))
+    note))
 
 ;;;###autoload
 (defun vino-book-publisher-select ()
   "Select a Publisher entity."
   (interactive)
-  (let ((note (vulpea-select-from
-              "Publisher"
-              (vulpea-db-query-by-tags-every '("book" "publisher"))
-              :expand-aliases t)))
-    (if (vulpea-note-id note)
-        note
-      (if (y-or-n-p (format "Create %s? " (vulpea-note-title note)))
-          (vino-book-publisher-create (vulpea-note-title note))
-        note))))
+  (vino--select2 "Publisher" '("book" "publisher") #'vino-book-publisher-create))
 
 ;; ============================================================================
 ;; CORE ENTITY: Series
@@ -99,25 +156,23 @@
 (defun vino-book-series-create (&optional title)
   "Create a Series entity (set of related works/editions)."
   (interactive)
-  (let ((title (or title (vino--read-string "Series: "))))
-    (vulpea-create
-     title
-     (plist-get vino-book-series-template :file-name)
-     :tags (plist-get vino-book-series-template :tags))))
+  (let* ((title (or title (vino--read-string "Series: ")))
+         (type (completing-read "Type: " vino-book-series-types nil t))
+         (ordering (read-string "Ordering type: "))
+         (note (vulpea-create
+                title
+                (plist-get vino-book-series-template :file-name)
+                :tags (plist-get vino-book-series-template :tags)
+                :meta `(("type" . ,type)
+                        ("ordering" . ,ordering)))))
+    (vulpea-db-update-file (vulpea-note-path note))
+    note))
 
 ;;;###autoload
 (defun vino-book-series-select ()
   "Select a Series entity."
   (interactive)
-  (let ((note (vulpea-select-from
-              "Series"
-              (vulpea-db-query-by-tags-every '("book" "series"))
-              :expand-aliases t)))
-    (if (vulpea-note-id note)
-        note
-      (if (y-or-n-p (format "Create %s? " (vulpea-note-title note)))
-          (vino-book-series-create (vulpea-note-title note))
-        note))))
+  (vino--select2 "Series" '("book" "series") #'vino-book-series-create))
 
 ;; ============================================================================
 ;; CORE ENTITY: Work
@@ -127,11 +182,17 @@
 (defun vino-book-work-create ()
   "Create a Work collectible (distinct intellectual creation)."
   (interactive)
-  (let ((title (vino--read-string "Work: ")))
-    (vulpea-create
-     title
-     (plist-get vino-book-work-template :file-name)
-     :tags (plist-get vino-book-work-template :tags))))
+  (let* ((title (vino--read-string "Work: "))
+         (type (completing-read "Type: " vino-book-work-types nil t))
+         (language (read-string "Language (ISO 639): "))
+         (note (vulpea-create
+                title
+                (plist-get vino-book-work-template :file-name)
+                :tags (plist-get vino-book-work-template :tags)
+                :meta `(("type" . ,type)
+                        ("language" . ,language)))))
+    (vulpea-db-update-file (vulpea-note-path note))
+    note))
 
 ;;;###autoload
 (defun vino-book-work-select ()
@@ -151,11 +212,15 @@
 (defun vino-book-edition-group-create ()
   "Create an Edition Group (e.g. paperback + hardcover + ebook)."
   (interactive)
-  (let ((title (vino--read-string "Edition Group: ")))
-    (vulpea-create
-     title
-     (plist-get vino-book-edition-group-template :file-name)
-     :tags (plist-get vino-book-edition-group-template :tags))))
+  (let* ((title (vino--read-string "Edition Group: "))
+         (type (completing-read "Type: " vino-book-edition-group-types nil t))
+         (note (vulpea-create
+                title
+                (plist-get vino-book-edition-group-template :file-name)
+                :tags (plist-get vino-book-edition-group-template :tags)
+                :meta `(("type" . ,type)))))
+    (vulpea-db-update-file (vulpea-note-path note))
+    note))
 
 ;;;###autoload
 (defun vino-book-edition-group-select ()
@@ -175,11 +240,23 @@
 (defun vino-book-edition-create ()
   "Create an Edition collectible (physical or digital version)."
   (interactive)
-  (let ((title (vino--read-string "Edition: ")))
-    (vulpea-create
-     title
-     (plist-get Vino-book-edition-template :file-name)
-     :tags (plist-get Vino-book-edition-template :tags))))
+  (let* ((title (vino--read-string "Edition: "))
+         (format (completing-read "Format: " vino-book-edition-formats nil t))
+         (isbn (read-string "ISBN: "))
+         (pages (read-number "Pages: " 0))
+         (date (read-string "Release date: "))
+         (status (completing-read "Status: " vino-book-edition-statuses nil t))
+         (note (vulpea-create
+                title
+                (plist-get vino-book-edition-template :file-name)
+                :tags (plist-get vino-book-edition-template :tags)
+                :meta `(("format" . ,format)
+                        ("isbn" . ,isbn)
+                        ("pages" . ,(number-to-string pages))
+                        ("release_date" . ,date)
+                        ("status" . ,status)))))
+    (vulpea-db-update-file (vulpea-note-path note))
+    note))
 
 ;;;###autoload
 (defun vino-book-edition-select ()
@@ -207,14 +284,21 @@
 ;;;###autoload
 (defun vino-book-author-credit-create ()
   "Create an Author Credit (how authors are credited on an Edition).
-Example: 'John Doe and Jane Smith' on book cover."
+Example: `John Doe and Jane Smith' on book cover."
   (interactive)
   (let* ((author (vino-book-author-select))
-         (name (vino--read-string "Display name: " (vulpea-note-title author))))
-    (vulpea-create
-     name
-     (plist-get vino-book-author-credit-template :file-name)
-     :tags (plist-get vino-book-author-credit-template :tags))))
+         (name (vino--read-string "Display name: " (vulpea-note-title author)))
+         (joinphrase (vino--read-string "Join phrase: " " & "))
+         (order (read-number "Order: " 1))
+         (note (vulpea-create
+                name
+                (plist-get vino-book-author-credit-template :file-name)
+                :tags (plist-get vino-book-author-credit-template :tags)
+                :meta `(("author" . ,(vulpea-note-id author))
+                        ("joinphrase" . ,joinphrase)
+                        ("order" . ,(number-to-string order))))))
+    (vulpea-db-update-file (vulpea-note-path note))
+    note))
 
 ;;;###autoload
 (defun vino-book-author-credit-select ()
@@ -226,187 +310,20 @@ Example: 'John Doe and Jane Smith' on book cover."
    :expand-aliases t))
 
 ;; ============================================================================
-;; PART 3: RELATIONSHIPS (*-rels based on BookBrainz)
-;; ============================================================================
-
-(defvar vino-book-rel-prefix "rel:")
-
-;; ============================================================================
-;; Relationship: author-rels (Author ↔ Work, Edition)
-;; ============================================================================
-
-;;;###autoload
-(defun vino-book-author-rels-add (author-note target-note type &optional attribute)
-  "Add author-rel: TYPE from AUTHOR-NOTE.
-TYPE can be: work, edition."
-  (let ((key (concat vino-book-rel-prefix type)))
-    (vulpea-utils-with-note author-note
-      (vulpea-buffer-meta-set
-       key (cons (cons (vulpea-note-id target-note) attribute)
-             (vulpea-note-meta-get-list author-note key)))
-      (save-buffer)
-      (vulpea-db-update-file (buffer-file-name (buffer-base-buffer))))))
-
-;;;###autoload
-(defun vino-book-author-rels-remove (author-note target-note type)
-  "Remove author-rel: TYPE from AUTHOR-NOTE."
-  (let ((key (concat vino-book-rel-prefix type)))
-    (vulpea-utils-with-note author-note
-      (vulpea-buffer-meta-set
-       key (--remove (string= (car it) (vulpea-note-id target-note))
-                     (vulpea-note-meta-get-list author-note key)))
-      (save-buffer)
-      (vulpea-db-update-file (buffer-file-name (buffer-base-buffer))))))
-
-;;;###autoload
-(defun vino-book-author-rels-get (author-note type)
-  "Get targets of author-rel: TYPE from AUTHOR-NOTE."
-  (vulpea-note-meta-get-list author-note (concat vino-book-rel-prefix type)))
-
-;; ============================================================================
-;; Relationship: work-rels (Work ↔ Work, Author, Language)
-;; ============================================================================
-
-;;;###autoload
-(defun vino-book-work-rels-add (work-note target-note type &optional attribute)
-  "Add work-rel: TYPE from WORK-NOTE.
-TYPE can be: author, language, work (translation)."
-  (let ((key (concat vino-book-rel-prefix type)))
-    (vulpea-utils-with-note work-note
-      (vulpea-buffer-meta-set
-       key (cons (cons (vulpea-note-id target-note) attribute)
-             (vulpea-note-meta-get-list work-note key)))
-      (save-buffer)
-      (vulpea-db-update-file (buffer-file-name (buffer-base-buffer))))))
-
-;;;###autoload
-(defun vino-book-work-rels-remove (work-note target-note type)
-  "Remove work-rel: TYPE from WORK-NOTE."
-  (let ((key (concat vino-book-rel-prefix type)))
-    (vulpea-utils-with-note work-note
-      (vulpea-buffer-meta-set
-       key (--remove (string= (car it) (vulpea-note-id target-note))
-                     (vulpea-note-meta-get-list work-note key)))
-      (save-buffer)
-      (vulpea-db-update-file (buffer-file-name (buffer-base-buffer))))))
-
-;;;###autoload
-(defun vino-book-work-rels-get (work-note type)
-  "Get targets of work-rel: TYPE from WORK-NOTE."
-  (vulpea-note-meta-get-list work-note (concat vino-book-rel-prefix type)))
-
-;; ============================================================================
-;; Relationship: edition-group-rels (Edition Group ↔ Edition)
-;; ============================================================================
-
-;;;###autoload
-(defun vino-book-edition-group-rels-add (eg-note edition-note)
-  "Add EDITION-NOTE to Edition Group EG-NOTE."
-  (let ((key (concat vino-book-rel-prefix "edition")))
-    (vulpea-utils-with-note eg-note
-      (vulpea-buffer-meta-set
-       key (cons (cons (vulpea-note-id edition-note) nil)
-             (vulpea-note-meta-get-list eg-note key)))
-      (save-buffer)
-      (vulpea-db-update-file (buffer-file-name (buffer-base-buffer))))))
-
-;;;###autoload
-(defun vino-book-edition-group-rels-remove (eg-note edition-note)
-  "Remove EDITION-NOTE from Edition Group EG-NOTE."
-  (let ((key (concat vino-book-rel-prefix "edition")))
-    (vulpea-utils-with-note eg-note
-      (vulpea-buffer-meta-set
-       key (--remove (string= (car it) (vulpea-note-id edition-note))
-                     (vulpea-note-meta-get-list eg-note key)))
-      (save-buffer)
-      (vulpea-db-update-file (buffer-file-name (buffer-base-buffer))))))
-
-;;;###autoload
-(defun vino-book-edition-group-rels-get (eg-note)
-  "Get editions from Edition Group EG-NOTE."
-  (vulpea-note-meta-get-list eg-note (concat vino-book-rel-prefix "edition")))
-
-;; ============================================================================
-;; Relationship: edition-rels (Edition ↔ Work, Publisher, Edition Group, Author Credit)
-;; ============================================================================
-
-;;;###autoload
-(defun vino-book-edition-rels-add (edition-note target-note type &optional attribute)
-  "Add edition-rel: TYPE from EDITION-NOTE.
-TYPE can be: work, publisher, edition-group, author-credit."
-  (let ((key (concat vino-book-rel-prefix type)))
-    (vulpea-utils-with-note edition-note
-      (vulpea-buffer-meta-set
-       key (cons (cons (vulpea-note-id target-note) attribute)
-             (vulpea-note-meta-get-list edition-note key)))
-      (save-buffer)
-      (vulpea-db-update-file (buffer-file-name (buffer-base-buffer))))))
-
-;;;###autoload
-(defun vino-book-edition-rels-remove (edition-note target-note type)
-  "Remove edition-rel: TYPE from EDITION-NOTE."
-  (let ((key (concat vino-book-rel-prefix type)))
-    (vulpea-utils-with-note edition-note
-      (vulpea-buffer-meta-set
-       key (--remove (string= (car it) (vulpea-note-id target-note))
-                     (vulpea-note-meta-get-list edition-note key)))
-      (save-buffer)
-      (vulpea-db-update-file (buffer-file-name (buffer-base-buffer))))))
-
-;;;###autoload
-(defun vino-book-edition-rels-get (edition-note type)
-  "Get targets of edition-rel: TYPE from EDITION-NOTE."
-  (vulpea-note-meta-get-list edition-note (concat vino-book-rel-prefix type)))
-
-;; ============================================================================
-;; Relationship: publisher-rels (Publisher ↔ Edition)
-;; ============================================================================
-
-;;;###autoload
-(defun vino-book-publisher-rels-add (publisher-note target-note type)
-  "Add publisher-rel: TYPE from PUBLISHER-NOTE.
-TYPE can be: edition, edition-group."
-  (let ((key (concat vino-book-rel-prefix type)))
-    (vulpea-utils-with-note publisher-note
-      (vulpea-buffer-meta-set
-       key (cons (cons (vulpea-note-id target-note) nil)
-             (vulpea-note-meta-get-list publisher-note key)))
-      (save-buffer)
-      (vulpea-db-update-file (buffer-file-name (buffer-base-buffer))))))
-
-;;;###autoload
-(defun vino-book-publisher-rels-get (publisher-note type)
-  "Get targets of publisher-rel: TYPE from PUBLISHER-NOTE."
-  (vulpea-note-meta-get-list publisher-note (concat vino-book-rel-prefix type)))
-
-;; ============================================================================
-;; Relationship: series-rels (Series ↔ Work, Edition, Author, Publisher)
-;; ============================================================================
-
-;;;###autoload
-(defun vino-book-series-rels-add (series-note target-note type)
-  "Add series-rel: TYPE from SERIES-NOTE.
-TYPE can be: work, edition, author, publisher."
-  (let ((key (concat vino-book-rel-prefix type)))
-    (vulpea-utils-with-note series-note
-      (vulpea-buffer-meta-set
-       key (cons (cons (vulpea-note-id target-note) nil)
-             (vulpea-note-meta-get-list series-note key)))
-      (save-buffer)
-      (vulpea-db-update-file (buffer-file-name (buffer-base-buffer))))))
-
-;;;###autoload
-(defun vino-book-series-rels-get (series-note type)
-  "Get targets of series-rel: TYPE from SERIES-NOTE."
-  (vulpea-note-meta-get-list series-note (concat vino-book-rel-prefix type)))
-
-;; ============================================================================
 ;; Utility Functions
 ;; ============================================================================
 
-(defun vino--read-string (prompt &optional initial-input)
-  "Read a string from minibuffer with PROMPT."
-  (string-trim (read-string prompt initial-input)))
+(defun vino--select2 (prompt tags create-fn)
+  "Select entity by TAGS with PROMPT, creating via CREATE-FN if needed."
+  (let ((note (vulpea-select-from
+              prompt
+              (vulpea-db-query-by-tags-every tags)
+              :expand-aliases t)))
+    (if (vulpea-note-id note)
+        note
+      (if (y-or-n-p (format "Create %s? " (vulpea-note-title note)))
+          (funcall create-fn (vulpea-note-title note))
+        note))))
 
 (provide 'vino-book)
 ;;; vino-book.el ends here
