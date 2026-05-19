@@ -1,11 +1,10 @@
 # vino-project
 
-Record listening and reading history locally.
+Emacs Lisp API clients for MusicBrainz and BookBrainz.
 
-- **musicbrainz.el** — MusicBrainz API client with EIEIO entity dispatch, lazy pagination, Org integration
-- **bookbrainz.el** — BookBrainz API client with search, lookup, EIEIO entity dispatch, VUI interface, Org integration
-
-Inspired by [d12frosted/vino](https://github.com/d12frosted/vino).
+- **musicbrainz.el** — MusicBrainz API client with EIEIO entity dispatch, lazy pagination for releases/recordings/works, Org integration
+- **bookbrainz.el** — BookBrainz API client with search/lookup, EIEIO entity dispatch, VUI interface, Org integration
+- **tests/** — 57 unit tests for bookbrainz.el
 
 ## Running tests
 
