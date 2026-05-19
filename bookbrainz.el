@@ -658,15 +658,7 @@ E.g. \"+001954-07-29\" -> \"1954-07-29\", \"+001974\" -> \"1974\"."
 ;;; Major mode
 
 (defvar-keymap bookbrainz-mode-map
-  :doc "Keymap for `bookbrainz-mode'."
-  "n" #'next-line
-  "p" #'previous-line
-  "q" #'quit-window
-  "g" #'bookbrainz-search
-  "s" #'bookbrainz-search
-  "/" #'bookbrainz-search
-  "b" #'bookbrainz-browse-url
-  "S" #'bookbrainz-save-to-org)
+  :doc "Keymap for `bookbrainz-mode'.")
 
 (define-derived-mode bookbrainz-mode vui-mode "BookBrainz"
   "Major mode for BookBrainz client.

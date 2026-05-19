@@ -1388,15 +1388,7 @@ File is created at `musicbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
 ;;; Major mode
 
 (defvar-keymap musicbrainz-mode-map
-  :doc "Keymap for `musicbrainz-mode'."
-  "n" #'next-line
-  "p" #'previous-line
-  "q" #'quit-window
-  "g" #'musicbrainz-search
-  "s" #'musicbrainz-search
-  "/" #'musicbrainz-search
-  "b" #'musicbrainz-browse-url
-  "S" #'musicbrainz-save-to-org)
+  :doc "Keymap for `musicbrainz-mode'.")
 
 (define-derived-mode musicbrainz-mode vui-mode "MusicBrainz"
   "Major mode for MusicBrainz client.
