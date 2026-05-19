@@ -920,14 +920,19 @@ Uses `vui-collapsible' for nested structures."
                                                         (if-let* ((cat (alist-get 'catalog-number item)))
                                                             (format "%s (%s)" label-name cat)
                                                           label-name))
-                                                      (when-let* ((cat (alist-get 'catalog-number item)))
-                                                        cat)
-                                                      ;; Fallback: value of first key
-                                                      (and (consp item)
-                                                           (let ((first-val (cdar item)))
-                                                             (if (stringp first-val) first-val
-                                                               (format "%s" first-val))))))
-                                                items))))
+                                                       ;; Generic fallback: collect all string-typed values
+                                                       (let ((strings (delq nil
+                                                                           (mapcar (lambda (pair)
+                                                                                     (and (stringp (cdr pair))
+                                                                                          (cdr pair)))
+                                                                                   item))))
+                                                         (when strings
+                                                           (mapconcat #'identity strings ", ")))
+                                                       ;; Last resort: type marker
+                                                       (let ((type (alist-get 'type item)))
+                                                         (when type
+                                                            (format "[%s]" type)))))
+                                                  items))))
                        (list (musicbrainz--meta k (mapconcat #'identity names ", "))))
                    ;; Nested alist (area, rating, life-span)
                    (let ((name (or (alist-get 'name v) (alist-get 'title v))))
