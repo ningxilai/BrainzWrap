@@ -52,7 +52,7 @@
 (defun org-mode () nil)
 
 ;; Stub timer
-(defun timerp (_) nil)
+(defun timerp (x) (and (vectorp x) (>= (length x) 10)))
 
 ;; Stub quit-window
 (defun quit-window (&rest _args) nil)

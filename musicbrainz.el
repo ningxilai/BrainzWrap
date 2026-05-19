@@ -898,19 +898,37 @@ Uses `vui-collapsible' for nested structures."
                (cond
                 ((stringp v)
                  (list (musicbrainz--meta k v)))
-                 ((and (listp v) (consp (car v)))
-                  (if (and (consp (caar v)) (consp (cdar v)))
-                     ;; List of alist items (recordings, tags, releases)
-                     (let* ((items v)
-                           (names (delq nil
-                                       (mapcar (lambda (item)
-                                                 (or (alist-get 'name item)
-                                                     (alist-get 'title item)
-                                                     (alist-get 'id item)
-                                                     (and (consp item)
-                                                          (format "%s" (car item)))))
-                                               items))))
-                      (list (musicbrainz--meta k (mapconcat #'identity names ", "))))
+                  ((and (listp v) (consp (car v)))
+                   (if (and (consp (caar v)) (consp (cdar v)))
+                      ;; List of alist items (recordings, tags, releases, release-events, label-info)
+                      (let* ((items v)
+                            (names (delq nil
+                                        (mapcar (lambda (item)
+                                                  (or (alist-get 'name item)
+                                                      (alist-get 'title item)
+                                                      (alist-get 'id item)
+                                                      ;; release-events: date (area name)
+                                                      (let ((date (alist-get 'date item)))
+                                                        (when date
+                                                          (if-let* ((area (alist-get 'area item))
+                                                                    (area-name (alist-get 'name area)))
+                                                              (format "%s (%s)" date area-name)
+                                                            date)))
+                                                      ;; label-info: label name (catalog-number)
+                                                      (when-let* ((label (alist-get 'label item))
+                                                                  (label-name (alist-get 'name label)))
+                                                        (if-let* ((cat (alist-get 'catalog-number item)))
+                                                            (format "%s (%s)" label-name cat)
+                                                          label-name))
+                                                      (when-let* ((cat (alist-get 'catalog-number item)))
+                                                        cat)
+                                                      ;; Fallback: value of first key
+                                                      (and (consp item)
+                                                           (let ((first-val (cdar item)))
+                                                             (if (stringp first-val) first-val
+                                                               (format "%s" first-val))))))
+                                                items))))
+                       (list (musicbrainz--meta k (mapconcat #'identity names ", "))))
                    ;; Nested alist (area, rating, life-span)
                    (let ((name (or (alist-get 'name v) (alist-get 'title v))))
                     (if name
@@ -1224,9 +1242,24 @@ Appends to `release-results' state."
                                     (vui-text (format "- %s" (alist-get 'name label)))
                                     (when-let* ((cat (alist-get 'catalog-number l)))
                                       (vui-text (format " (%s)" cat) :face 'shadow)))))
-                              labels)))))))
+                              labels)))
+               (let ((events (alist-get 'release-events entity)))
+                 (when events
+                   (vui-collapsible :title (format "Release Events (%d)" (length events))
+                     (apply #'vui-vstack :spacing 0
+                       (mapcar (lambda (ev)
+                                 (let ((date (alist-get 'date ev))
+                                       (area (alist-get 'area ev)))
+                                   (vui-text (format "- %s%s"
+                                                      (or date "(no date)")
+                                                      (if-let* ((a area)
+                                                                (n (alist-get 'name a)))
+                                                          (format " (%s)" n)
+                                                        ""))
+                                              :face (if date 'default 'shadow))))
+                               events)))))))))
 
-(defun musicbrainz--recording-detail (entity)
+ (defun musicbrainz--recording-detail (entity)
   (vui-vstack :spacing 0
               (musicbrainz--meta "Length"
                                  (let ((len (alist-get 'length entity)))
