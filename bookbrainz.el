@@ -31,27 +31,113 @@
 
 (defgroup bookbrainz nil
   "BookBrainz API client."
-  :group 'external)
+  :group 'external
+  :prefix "bookbrainz-")
 
 (defcustom bookbrainz-api-base "https://api.bookbrainz.org/1"
   "Base URL for the BookBrainz API."
-  :type 'string)
+  :type 'string
+  :group 'bookbrainz)
 
 (defcustom bookbrainz-user-agent "Emacs-BookBrainz/1.0 (bookbrainz.el)"
   "User-agent string for BookBrainz API requests."
-  :type 'string)
+  :type 'string
+  :group 'bookbrainz)
 
 (defcustom bookbrainz-page-size 20
   "Number of results per page."
-  :type 'integer)
+  :type 'integer
+  :group 'bookbrainz)
 
 (defcustom bookbrainz-org-dir "bookbrainz"
   "Subdirectory under `org-directory' for saved BookBrainz entities."
-  :type 'string)
+  :type 'string
+  :group 'bookbrainz)
 
 (defcustom bookbrainz-rate-limit '(1 . 1)
   "Rate limit (requests per second)."
-  :type '(cons integer integer))
+  :type '(cons integer integer)
+  :group 'bookbrainz)
+
+
+;;; EIEIO class hierarchy
+
+(defclass bb-entity ()
+  ((type :initarg :type :reader bb-type)
+   (bbid :initarg :bbid :reader bb-bbid)
+   (data :initarg :data :reader bb-data))
+  "Base EIEIO class wrapping a BookBrainz API alist.")
+
+(defclass bb-author (bb-entity) ())
+(defclass bb-publisher (bb-entity) ())
+(defclass bb-series (bb-entity) ())
+(defclass bb-work (bb-entity) ())
+(defclass bb-edition-group (bb-entity) ())
+(defclass bb-edition (bb-entity) ())
+
+(defun bb-entity-create (type bbid data)
+  "Wrap DATA alist in an EIEIO object for entity TYPE."
+  (let ((class (intern-soft (format "bb-%s" type))))
+    (if (and class (find-class class))
+        (make-instance class :type type :bbid bbid :data data)
+      (make-instance 'bb-entity :type type :bbid bbid :data data))))
+
+(cl-defgeneric bb-name (entity)
+  "Return display name for ENTITY.")
+(cl-defmethod bb-name ((e bb-entity))
+  (bookbrainz--entity-name (bb-data e)))
+
+(cl-defgeneric bb-detail (entity)
+  "Return VUI vnodes for ENTITY's detail view.")
+(cl-defmethod bb-detail ((_e bb-entity))
+  (vui-muted "Detail view not available for this entity type"))
+
+(cl-defgeneric bb-format-result (entity)
+  "Return a detail string for ENTITY in search results.")
+(cl-defmethod bb-format-result ((_e bb-entity)) "")
+
+(cl-defgeneric bb-org-props (entity &optional json-ld)
+  "Return Org :PROPERTIES: drawer string for ENTITY.")
+(cl-defmethod bb-org-props ((e bb-entity) &optional _json-ld)
+  (let* ((data (bb-data e))
+         (props (list (format ":ID:          %s" (or (alist-get 'bbid data) ""))
+                      (format ":ENTITY_TYPE: %s" (bb-type e))
+                      (format ":NAME:        %s" (bb-name e)))))
+    (when-let* ((disambig (alist-get 'disambiguation data)))
+      (push (format ":DESC:        %s" disambig) props))
+    (concat ":PROPERTIES:\n"
+            (mapconcat #'identity (nreverse props) "\n")
+            "\n:END:")))
+
+(defmacro bb-let* (data bindings &rest body)
+  "Like `let*', but binds each VAR to (alist-get \\='KEY DATA).
+Each BINDING is (VAR KEY) with KEY quoted automatically.
+If KEY is omitted, VAR is used as the key.
+BODY is evaluated with VARs bound.
+
+\(fn DATA ((VAR KEY) ...) &rest BODY)"
+  (declare (indent 2))
+  `(let* ,(mapcar (lambda (b)
+                    (if (consp b)
+                        `(,(car b) (alist-get ',(or (cadr b) (car b)) ,data))
+                      `(,b (alist-get ',b ,data))))
+                  bindings)
+     ,@body))
+
+(defmacro bb-when-let* (data bindings &rest body)
+  "Like `when-let*' with automatic `alist-get' from DATA.
+Each BINDING is (VAR KEY) with KEY quoted automatically.
+If KEY is omitted, VAR is used as the key.
+BODY is evaluated if all bindings are non-nil.
+
+\(fn DATA ((VAR KEY) ...) &rest BODY)"
+  (declare (indent 2))
+  `(when-let* ,(mapcar (lambda (b)
+                          (if (consp b)
+                              `(,(car b) (alist-get ',(or (cadr b) (car b)) ,data))
+                            `(,b (alist-get ',b ,data))))
+                        bindings)
+     ,@body))
 
 
 ;;; Rate-limited API client
@@ -147,55 +233,6 @@ full entity detail must be viewed on bookbrainz.org in a browser.")
 (defun bookbrainz--entity-type-has-api-p (type)
   "Return non-nil if TYPE has a lookup API endpoint."
   (not (member type bookbrainz--entity-types-no-api)))
-
-
-;;; EIEIO class hierarchy
-
-(defclass bb-entity ()
-  ((type :initarg :type :reader bb-type)
-   (bbid :initarg :bbid :reader bb-bbid)
-   (data :initarg :data :reader bb-data))
-  "Base EIEIO class wrapping a BookBrainz API alist.")
-
-(defclass bb-author (bb-entity) ())
-(defclass bb-publisher (bb-entity) ())
-(defclass bb-series (bb-entity) ())
-(defclass bb-work (bb-entity) ())
-(defclass bb-edition-group (bb-entity) ())
-(defclass bb-edition (bb-entity) ())
-
-(defun bb-entity-create (type bbid data)
-  (let ((class (intern-soft (format "bb-%s" type))))
-    (if (and class (find-class class))
-        (make-instance class :type type :bbid bbid :data data)
-      (make-instance 'bb-entity :type type :bbid bbid :data data))))
-
-(cl-defgeneric bb-name (entity)
-  "Return display name for ENTITY.")
-(cl-defmethod bb-name ((e bb-entity))
-  (bookbrainz--entity-name (bb-data e)))
-
-(cl-defgeneric bb-detail (entity)
-  "Return VUI vnodes for ENTITY's detail view.")
-(cl-defmethod bb-detail ((_e bb-entity))
-  (vui-muted "Detail view not available for this entity type"))
-
-(cl-defgeneric bb-format-result (entity)
-  "Return a detail string for ENTITY in search results.")
-(cl-defmethod bb-format-result ((_e bb-entity)) "")
-
-(cl-defgeneric bb-org-props (entity &optional json-ld)
-  "Return Org :PROPERTIES: drawer string for ENTITY.")
-(cl-defmethod bb-org-props ((e bb-entity) &optional _json-ld)
-  (let* ((data (bb-data e))
-         (props (list (format ":ID:          %s" (or (alist-get 'bbid data) ""))
-                      (format ":ENTITY_TYPE: %s" (bb-type e))
-                      (format ":NAME:        %s" (bb-name e)))))
-    (when-let* ((disambig (alist-get 'disambiguation data)))
-      (push (format ":DESC:        %s" disambig) props))
-    (concat ":PROPERTIES:\n"
-            (mapconcat #'identity (nreverse props) "\n")
-            "\n:END:")))
 
 
 ;;; Detail views
@@ -381,6 +418,11 @@ E.g. \"+001954-07-29\" -> \"1954-07-29\", \"+001974\" -> \"1974\"."
 ;;; Async entity loading
 
 (defun bookbrainz--load-entity-async (entity-type bbid on-success on-error)
+  "Load ENTITY-TYPE entity with BBID asynchronously.
+ON-SUCCESS is called with (entity) on success.
+ON-ERROR is called with (error-condition) on failure.
+Returns the timer object.
+Callbacks should be created with `vui-async-callback' or `vui-with-async-context'."
   (run-with-idle-timer
    0.1 nil
    (lambda ()
@@ -611,9 +653,11 @@ E.g. \"+001954-07-29\" -> \"1954-07-29\", \"+001974\" -> \"1974\"."
 ;;; Org integration
 
 (defun bookbrainz--entity-to-org-properties (entity-type entity)
+  "Return a string with ENTITY metadata as Org mode :PROPERTIES: drawer."
   (bb-org-props (bb-entity-create entity-type (or (alist-get 'bbid entity) "") entity)))
 
 (defun bookbrainz--show-org-properties (entity-type entity)
+  "Display ENTITY metadata as an Org mode PROPERTIES drawer in a temp buffer."
   (let* ((text (bookbrainz--entity-to-org-properties entity-type entity))
          (buf (get-buffer-create "*BB Org Properties*")))
     (with-current-buffer buf
@@ -625,6 +669,8 @@ E.g. \"+001954-07-29\" -> \"1954-07-29\", \"+001974\" -> \"1974\"."
     (message "Org properties shown in buffer *BB Org Properties*")))
 
 (defun bookbrainz--save-to-org (entity-type entity)
+  "Save ENTITY as an Org file with a :PROPERTIES: drawer.
+File is created at `bookbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
   (let* ((title (bookbrainz--entity-name entity))
          (type-str entity-type)
          (props (bookbrainz--entity-to-org-properties entity-type entity))

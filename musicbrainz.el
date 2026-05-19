@@ -39,8 +39,8 @@
 ;;; Custom variables
 
 (defgroup musicbrainz nil
-  "MusicBrainz client for Emacs."
-  :group 'tools
+  "MusicBrainz API client."
+  :group 'external
   :prefix "musicbrainz-")
 
 (defcustom musicbrainz-api-base "https://musicbrainz.org"
@@ -53,25 +53,24 @@
   :type 'string
   :group 'musicbrainz)
 
+(defcustom musicbrainz-page-size 25
+  "Default number of results per API request (max 100)."
+  :type 'integer
+  :group 'musicbrainz)
+
+(defcustom musicbrainz-org-dir "musicbrainz"
+  "Subdirectory under `org-directory' for saved MusicBrainz entities."
+  :type 'string
+  :group 'musicbrainz)
+
 (defcustom musicbrainz-rate-limit '(15 . 18)
   "Rate limit as (max-requests . period-seconds).
 Default 15 requests per 18 seconds, per MusicBrainz API recommendations."
   :type '(cons integer integer)
   :group 'musicbrainz)
 
-(defcustom musicbrainz-page-size 25
-  "Default number of results per API request (max 100)."
-  :type 'integer
-  :group 'musicbrainz)
-
-(defcustom musicbrainz-org-dir "~/.musicbrainz"
-  "Directory for saved Org notes.  Entity files are stored in
-`musicbrainz-org-dir/TYPE/' subdirectories."
-  :type 'directory
-  :group 'musicbrainz)
-
 
-;;; EIEIO entity dispatch + foo-let macro
+;;; EIEIO entity dispatch + mb-let* macro
 
 (defclass mz-entity ()
   ((type :initarg :type :reader mz-type)
@@ -219,7 +218,7 @@ Default 15 requests per 18 seconds, per MusicBrainz API recommendations."
       (push (format ":LABEL_CODE:  %s" code) props))
     (concat (mapconcat #'identity (nreverse props) "\n") "\n:END:")))
 
-(defmacro mz-let* (data bindings &rest body)
+(defmacro mb-let* (data bindings &rest body)
   "Like `let*', but binds each VAR to (alist-get \\='KEY DATA).
 Each BINDING is (VAR KEY) with KEY quoted automatically.
 If KEY is omitted, VAR is used as the key.
@@ -229,12 +228,12 @@ BODY is evaluated with VARs bound.
   (declare (indent 2))
   `(let* ,(mapcar (lambda (b)
                     (if (consp b)
-                        `(,(car b) (alist-get ',(or (cdr b) (car b)) ,data))
+                        `(,(car b) (alist-get ',(or (cadr b) (car b)) ,data))
                       `(,b (alist-get ',b ,data))))
                   bindings)
      ,@body))
 
-(defmacro mz-when-let* (data bindings &rest body)
+(defmacro mb-when-let* (data bindings &rest body)
   "Like `when-let*' with automatic `alist-get' from DATA.
 Each BINDING is (VAR KEY) with KEY quoted automatically.
 If KEY is omitted, VAR is used as the key.
@@ -243,10 +242,10 @@ BODY is evaluated if all bindings are non-nil.
 \(fn DATA ((VAR KEY) ...) &rest BODY)"
   (declare (indent 2))
   `(when-let* ,(mapcar (lambda (b)
-                         (if (consp b)
-                             `(,(car b) (alist-get ',(or (cdr b) (car b)) ,data))
-                           `(,b (alist-get ',b ,data))))
-                       bindings)
+                          (if (consp b)
+                              `(,(car b) (alist-get ',(or (cadr b) (car b)) ,data))
+                            `(,b (alist-get ',b ,data))))
+                        bindings)
      ,@body))
 
 
@@ -602,16 +601,16 @@ Returns the parsed response alist."
 
 (defun musicbrainz--entity-type-label (type)
   (pcase type
-    ('artist "Artist")
-    ('release "Release")
-    ('release-group "Release Group")
-    ('recording "Recording")
-    ('work "Work")
-    ('label "Label")
-    ('area "Area")
-    ('event "Event")
-    ('place "Place")
-    ('series "Series")
+    ("artist" "Artist")
+    ("release" "Release")
+    ("release-group" "Release Group")
+    ("recording" "Recording")
+    ("work" "Work")
+    ("label" "Label")
+    ("area" "Area")
+    ("event" "Event")
+    ("place" "Place")
+    ("series" "Series")
     (_ (capitalize (format "%s" type)))))
 
 (defun musicbrainz--format-artist (a)
@@ -789,7 +788,7 @@ Returns the parsed response alist."
                               (vui-component 'musicbrainz-results
                                 :results results
                                 :total-count total-count
-                                :entity-type (intern entity-type)
+                                 :entity-type entity-type
                                 :loading-more loading-more
                                  :on-load-more (lambda ()
                                                  (unless loading-more
@@ -994,8 +993,8 @@ Uses `musicbrainz-results' component with Prev/Next pagination."
                                 (vui-async-callback (entity json-ld)
                                                     (vui-set-state :entity entity)
                                                     (vui-set-state :json-ld json-ld)
-                                                    (when (and (eq entity-type 'artist) entity)
-                                                      (let* ((rec-resp (musicbrainz--browse-page "recording" "artist" mbid))
+                                                     (when (and (equal entity-type "artist") entity)
+                                                       (let* ((rec-resp (musicbrainz--browse-page "recording" "artist" mbid))
                                                              (wrk-resp (musicbrainz--browse-page "work" "artist" mbid))
                                                              (rel-resp (musicbrainz--browse-page "release" "artist" mbid)))
                                                         (vui-set-state :recording-results (alist-get 'recordings rec-resp))
@@ -1037,7 +1036,7 @@ Uses `musicbrainz-results' component with Prev/Next pagination."
                                                (vui-async-callback (entity json-ld)
                                                                    (vui-set-state :entity entity)
                                                                    (vui-set-state :json-ld json-ld)
-                                                                   (when (and (eq entity-type 'artist) entity)
+(when (and (equal entity-type "artist") entity)
                                                                      (let* ((rec-resp (musicbrainz--browse-page "recording" "artist" mbid))
                                                                             (wrk-resp (musicbrainz--browse-page "work" "artist" mbid))
                                                                             (rel-resp (musicbrainz--browse-page "release" "artist" mbid)))
@@ -1081,29 +1080,29 @@ Uses `musicbrainz-results' component with Prev/Next pagination."
                                                                      fields
                                                                      (musicbrainz--entity-data-section
                                                                       "Releases" release-results release-total release-loading
-                                                                      'release #'musicbrainz--load-release-page mbid)
+                                                                       "release" #'musicbrainz--load-release-page mbid)
                                                                      (musicbrainz--entity-data-section
                                                                       "Recordings" recording-results recording-total recording-loading
-                                                                      'recording #'musicbrainz--load-recording-page mbid)
+                                                                       "recording" #'musicbrainz--load-recording-page mbid)
                                                                      (musicbrainz--entity-data-section
                                                                       "Works" work-results work-total work-loading
-                                                                      'work #'musicbrainz--load-work-page mbid)
+                                                                       "work" #'musicbrainz--load-work-page mbid)
                                                                      (when show-raw
                                                                        (list (vui-text (let ((json-encoding-pretty-print t)) (json-encode json-ld)) :face 'shadow))))))))))
                                 ;; Actions
                                 (vui-newline)
-                                (vui-hstack :spacing 0
-(vui-button "Save to Org"
-            :on-click (lambda () (musicbrainz--save-to-org entity-type entity json-ld)))
-                                             (vui-button "Open in Browser"
-                                                         :on-click (lambda ()
-                                                                     (browse-url
-                                                                      (format "https://musicbrainz.org/%s/%s" entity-type mbid))))
-                                             (vui-button "Org Props"
-                                                         :on-click (lambda ()
-                                                                     (musicbrainz--show-org-properties entity-type entity json-ld)))
-                                             (vui-button "Close"
-                                                         :on-click (lambda () (quit-window))))))))
+                                 (vui-hstack :spacing 0
+                                  (vui-button "Save to Org"
+                                              :on-click (lambda () (musicbrainz--save-to-org entity-type entity json-ld)))
+                                  (vui-button "Open in Browser"
+                                              :on-click (lambda ()
+                                                          (browse-url
+                                                           (format "https://musicbrainz.org/%s/%s" entity-type mbid))))
+                                  (vui-button "Org Props"
+                                              :on-click (lambda ()
+                                                          (musicbrainz--show-org-properties entity-type entity json-ld)))
+                                  (vui-button "Close"
+                                              :on-click (lambda () (quit-window))))))))
 
 ;;; VUI helpers
 
@@ -1241,7 +1240,7 @@ Appends to `release-results' state."
     (musicbrainz--meta "Language" (alist-get 'language entity))))
 
 (defun musicbrainz--release-group-detail (entity)
-  (mz-let* entity ((primary-type primary-type) (secondary secondary-types) (ac artist-credit)
+  (mb-let* entity ((primary-type primary-type) (secondary secondary-types) (ac artist-credit)
                    (date first-release-date) (desc disambiguation))
     (vui-vstack :spacing 0
       (musicbrainz--meta "Primary Type" primary-type)
@@ -1307,14 +1306,14 @@ Appends to `release-results' state."
     (musicbrainz--tags-section entity)))
 
 (defun musicbrainz--series-detail (entity)
-  (mz-let* entity (type (desc disambiguation))
+  (mb-let* entity (type (desc disambiguation))
     (vui-vstack :spacing 0
       (musicbrainz--meta "Type" type)
       (musicbrainz--meta "Disambiguation" desc)
       (musicbrainz--tags-section entity))))
 
 (defun musicbrainz--instrument-detail (entity)
-  (mz-let* entity (type (desc description))
+  (mb-let* entity (type (desc description))
     (vui-vstack :spacing 0
       (musicbrainz--meta "Type" type)
       (musicbrainz--meta "Description" desc)
@@ -1359,8 +1358,10 @@ File is created at `musicbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
   (let* ((title (musicbrainz--entity-name entity))
          (type-str (format "%s" entity-type))
          (props (musicbrainz--entity-to-org-properties entity-type entity json-ld))
-         (dir (expand-file-name (format "%s" type-str)
-                                (expand-file-name musicbrainz-org-dir)))
+         (org-dir (if (bound-and-true-p org-directory)
+                      (expand-file-name musicbrainz-org-dir org-directory)
+                    (expand-file-name musicbrainz-org-dir "~/")))
+         (dir (expand-file-name (format "%s" type-str) org-dir))
          (slug (replace-regexp-in-string "[^a-z0-9]+" "-" (downcase title)))
          (ts (format-time-string "%Y%m%d%H%M%S"))
          (file (expand-file-name (format "%s-%s.org" ts slug) dir))

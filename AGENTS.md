@@ -252,7 +252,7 @@ taskNNN [ ] goal:<可观察结果> | scope:<文件或区域> | verify:<证明方
 - 新增实体类型必须同时更新：`mz-*` subclass、`mz-inc`、`mz-detail`、`mz-format-result`、`mz-org-props`、search entity-types 列表。
 
 ### foo-let 优先
-- 优先使用 `mz-let*` / `mz-when-let*` 替代手动 `alist-get` + `let*` 嵌套。
+- 优先使用 `mb-let*` / `mb-when-let*` 替代手动 `alist-get` + `let*` 嵌套。
 - 所有从 alist 取字段的地方都应考虑用 foo-let 系列宏。
 
 ### 嵌套深度控制
@@ -326,7 +326,7 @@ Byte-compiles clean (only pre-existing docstring width warnings).
 
 ### Key conventions
 - Entity type passed as **string** (vs musicbrainz.el uses symbol)
-- No `bb-let*` macro — uses raw `alist-get` (vs musicbrainz.el has `mz-let*`)
+- No `bb-let*` macro — uses raw `alist-get` (vs musicbrainz.el has `mb-let*`)
 - `--meta` width: 16 (aligned with musicbrainz.el)
 - Rate-limiter and API-request pattern structurally identical to musicbrainz.el
 - Org save functions use same slug/timestamp format as musicbrainz.el
@@ -351,9 +351,9 @@ emacs -Q --batch -l tests/test-runner.el -f ert-run-tests-batch-and-exit
 - Added EIEIO class hierarchy: `mz-entity` base + `mz-artist`, `mz-release`, `mz-recording`, `mz-work`, `mz-label`, `mz-event`, `mz-place`, `mz-series`, `mz-instrument`, `mz-area`, `mz-release-group` subclasses
 - Generic functions: `mz-inc`, `mz-detail`, `mz-org-props`, `mz-format-result`, `mz-data` (slot accessor)
 - `mz-entity-create` factory function (alist-to-instance mapping)
-- `mz-let*` macro: foo-let pattern — binds vars from `alist-get` with automatic key quoting
-- `mz-when-let*` macro: conditional variant of foo-let
-- Refactored 5 detail functions to use `mz-let*`: release-group, series, instrument, + `mz-let*` style
+- `mb-let*` macro: foo-let pattern — binds vars from `alist-get` with automatic key quoting
+- `mb-when-let*` macro: conditional variant of foo-let
+- Refactored 5 detail functions to use `mb-let*`: release-group, series, instrument, + `mb-let*` style
 - `musicbrainz--entity-to-org-properties` now delegates to `mz-org-props` generic
 - Pre-existing: `pp-to-string` → `json-encode` (compact Show Full), Org save (replaced vino/vulpea)
 
@@ -385,6 +385,6 @@ Byte-compiles clean (only pre-existing docstring width warnings).
 
 ### Remaining
 - bookbrainz passes entity type as string, musicbrainz as symbol — could unify
-- musicbrainz has `mz-let*` / `mz-when-let*` macros (5 uses), bookbrainz uses raw `alist-get`
+- musicbrainz has `mb-let*` / `mb-when-let*` macros (5 uses), bookbrainz uses raw `alist-get`
 - Large structural duplication between the two files (23 patterns), user chose not to extract shared lib
 - No musicbrainz tests yet

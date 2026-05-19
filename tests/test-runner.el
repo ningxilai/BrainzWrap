@@ -43,6 +43,8 @@
                (format "%s=%s" k v))
              params "&"))
 
+
+
 ;; Stub browse-url
 (defun browse-url (&rest _args) nil)
 
@@ -55,11 +57,14 @@
 ;; Stub quit-window
 (defun quit-window (&rest _args) nil)
 
-;; Now load bookbrainz.el
+;; Now load bookbrainz.el and musicbrainz.el
 (let ((load-path (cons (expand-file-name ".." (file-name-directory (or load-file-name buffer-file-name)))
                        load-path)))
-  (require 'bookbrainz))
+  (require 'bookbrainz)
+  (require 'musicbrainz))
 
-;; Load the actual test file
+;; Load the actual test files
 (load-file (expand-file-name "bookbrainz-test.el"
+                              (file-name-directory (or load-file-name buffer-file-name))))
+(load-file (expand-file-name "musicbrainz-test.el"
                               (file-name-directory (or load-file-name buffer-file-name))))
