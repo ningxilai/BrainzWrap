@@ -315,6 +315,36 @@ Byte-compiles clean (only pre-existing docstring width warnings).
 
 ---
 
+## 11. bookbrainz.el (BrainzWrap) 规范
+
+### Status
+- 57 unit tests, all passing
+- VUI-based search + entity detail view (no pagination — BB API doesn't need it)
+- EIEIO entity dispatch (6 entity types + base)
+- cl-defmethod generic: `bb-name`, `bb-detail`, `bb-format-result`, `bb-org-props`
+- No letter keybindings in mode-map (inherits from vui-mode only)
+
+### Key conventions
+- Entity type passed as **string** (vs musicbrainz.el uses symbol)
+- No `bb-let*` macro — uses raw `alist-get` (vs musicbrainz.el has `mz-let*`)
+- `--meta` width: 16 (aligned with musicbrainz.el)
+- Rate-limiter and API-request pattern structurally identical to musicbrainz.el
+- Org save functions use same slug/timestamp format as musicbrainz.el
+
+### Constraints
+- Entity types without API detail endpoint: area, collection, editor (open in browser only)
+- `bookbrainz--entity-type-has-api-p` gates detail loading
+
+### File
+`elpaca/sources/BrainzWrap/bookbrainz.el`
+
+### Test
+```sh
+emacs -Q --batch -l tests/test-runner.el -f ert-run-tests-batch-and-exit
+```
+
+---
+
 ## Session 2026-05-19c: 重构 + EIEIO 迁移 + 自检
 
 ### What was done
@@ -337,3 +367,24 @@ Byte-compiles clean (only pre-existing docstring width warnings).
 
 ### Verification
 Byte-compiles clean (only pre-existing docstring width warnings).
+
+---
+
+## Session 2026-05-19d: 测试、重命名、键位清理
+
+### What was done
+- Created 57 bookbrainz unit tests (all pass)
+- Fixed 10 test failures (date format, alist structure, API mock stubs, etc.)
+- Repo rename: vino-project → BrainzWrap
+- Remote updated: https://github.com/ningxilai/BrainzWrap
+- .gitignore: *.elc, *~, .#*, .DS_Store
+- README deleted (user directive)
+- vino-{book,music,project}.el removed
+- musicbrainz.el / bookbrainz.el: copyright removed, CC0-1.0 only
+- bookbrainz-mode-map / musicbrainz-mode-map: all letter bindings removed
+
+### Remaining
+- bookbrainz passes entity type as string, musicbrainz as symbol — could unify
+- musicbrainz has `mz-let*` / `mz-when-let*` macros (5 uses), bookbrainz uses raw `alist-get`
+- Large structural duplication between the two files (23 patterns), user chose not to extract shared lib
+- No musicbrainz tests yet
