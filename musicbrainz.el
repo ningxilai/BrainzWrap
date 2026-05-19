@@ -1,7 +1,5 @@
 ;;; musicbrainz.el --- MusicBrainz client for Emacs  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2026  The BrainzWrap Contributors
-
 ;; Author: opencode
 ;; Keywords: query , musicbrainz
 ;; URL: https://github.com/ningxilai/BrainzWrap

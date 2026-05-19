@@ -1,9 +1,7 @@
 ;;; bookbrainz.el --- BookBrainz API client for Emacs  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2026  The BrainzWrap Contributors
-
 ;; Author: opencode
-;; Keywords: tools, book, brainz
+;; Keywords: query , bookbrainz
 ;; URL: https://github.com/ningxilai/BrainzWrap
 ;; SPDX-License-Identifier: CC0-1.0
 
