@@ -85,7 +85,7 @@ Record only evidence that can change future planning or durable decisions.
 
 - Code now reads `(alist-get (intern (format "%s-count" browse-type)) page)` for total.
 - Pagination loop uses browse with `limit=100&offset=N`, stops when all items fetched or page < 100 items.
-- Source file: `/home/iris/.config/emacs/elpaca/sources/vino-project/musicbrainz.el` lines 166-204.
+- Source file: `/home/iris/.config/emacs/elpaca/sources/BrainzWrap/musicbrainz.el` lines 166-204.
 
 **Server source** (for reference):
 

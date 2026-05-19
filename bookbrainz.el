@@ -1,10 +1,10 @@
 ;;; bookbrainz.el --- BookBrainz API client for Emacs  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2026  The vino-project Contributors
+;; Copyright (C) 2026  The BrainzWrap Contributors
 
 ;; Author: opencode
 ;; Keywords: tools, book, brainz
-;; URL: https://github.com/ningxilai/vino-project
+;; URL: https://github.com/ningxilai/BrainzWrap
 ;; SPDX-License-Identifier: CC0-1.0
 
 ;; To the extent possible under law, the author has waived all
@@ -16,7 +16,7 @@
 
 ;; Quick start:
 ;;   (use-package bookbrainz
-;;     :vc (:url "https://github.com/ningxilai/vino-project"))
+;;     :vc (:url "https://github.com/ningxilai/BrainzWrap"))
 ;;   M-x bookbrainz-search
 
 ;;; Code:

@@ -245,7 +245,7 @@ taskNNN [ ] goal:<可观察结果> | scope:<文件或区域> | verify:<证明方
 
 ---
 
-## 10. musicbrainz.el (vino-project) 风格指南
+## 10. musicbrainz.el (BrainzWrap) 风格指南
 
 ### 实体类型一致性
 - 每次大型重构后，对照 `/home/iris/.local/src/musicbrainz-api` 和 `/home/iris/.local/src/musicbrainz-server` 自检实体类型的 inc 参数、detail 字段、search format 和 org-props 覆盖是否完整。
@@ -287,7 +287,7 @@ taskNNN [ ] goal:<可观察结果> | scope:<文件或区域> | verify:<证明方
 - Cloudflare JSON-LD fetch blocking is confirmed not fixable — use `musicbrainz--build-json-ld-from-entity` fallback.
 
 ### File
-`elpaca/sources/vino-project/musicbrainz.el`
+`elpaca/sources/BrainzWrap/musicbrainz.el`
 
 ### Verification
 Byte-compiles clean (only pre-existing docstring width warnings).
@@ -308,7 +308,7 @@ Byte-compiles clean (only pre-existing docstring width warnings).
 - Detail field gaps: gender for artist, iswcs/languages for work, packaging/asin for release — minor
 
 ### File
-`elpaca/sources/vino-project/musicbrainz.el`
+`elpaca/sources/BrainzWrap/musicbrainz.el`
 
 ### Verification
 Byte-compiles clean (only pre-existing docstring width warnings).
@@ -333,7 +333,7 @@ Byte-compiles clean (only pre-existing docstring width warnings).
 - No `mz-format-result` method overrides yet — all use default JSON encode
 
 ### File
-`elpaca/sources/vino-project/musicbrainz.el`
+`elpaca/sources/BrainzWrap/musicbrainz.el`
 
 ### Verification
 Byte-compiles clean (only pre-existing docstring width warnings).
