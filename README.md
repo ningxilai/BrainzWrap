@@ -1,6 +1,6 @@
 # vino-project
 
-Emacs Lisp API clients for MusicBrainz and BookBrainz, sharing the same tech stack (EIEIO entity dispatch, async API requests, Org integration).  The two files evolved separately — `musicbrainz.el` accumulated over time from legacy code, while `bookbrainz.el` was written later with a cleaner structure (VUI interface, `cl-defmethod` dispatch, simpler naming).  Both serve the same purpose: fetch entity data and integrate into an Emacs workflow.
+Emacs Lisp API clients for MusicBrainz and BookBrainz, sharing the same tech stack (EIEIO entity dispatch, async API requests, Org integration).
 
 ## Modules
 
