@@ -203,7 +203,7 @@ full entity detail must be viewed on bookbrainz.org in a browser.")
 (defun bookbrainz--meta (label value)
   (when value
     (vui-hstack
-     (vui-text (format " %s:" label) :face 'bold :width 18)
+     (vui-text (format " %s:" label) :face 'bold :width 16)
      (vui-text (format "%s" value)))))
 
 (defun bookbrainz--format-date (date-str)
