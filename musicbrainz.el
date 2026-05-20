@@ -1574,6 +1574,118 @@ ON-TOGGLE is a zero-arg function called when the sort toggle button is clicked."
 
 ;;; Org integration
 
+(defun musicbrainz--entity-info-to-org (entity)
+  "Format ENTITY alist simple fields as Org ** Entity Info section."
+  (let (pairs)
+    (dolist (pair entity)
+      (let ((k (car pair))
+            (v (cdr pair)))
+        (when (and (symbolp k)
+                   (not (memq k '(id name media relations tags
+                                    label-info release-events artist-credit
+                                    rating cover-art-archive text-representation
+                                    time annotation)))
+                   (or (stringp v) (numberp v)))
+          (push (format "- %s :: %s" k v) pairs))))
+    (when pairs
+      (concat "** Entity Info\n"
+              (string-join (nreverse pairs) "\n") "\n"))))
+
+(defun musicbrainz--tracklist-to-org (entity)
+  "Format ENTITY media as Org ** Tracklist section."
+  (let ((media (alist-get 'media entity)))
+    (when media
+      (concat "** Tracklist\n"
+              (mapconcat
+               (lambda (medium)
+                 (let* ((pos (alist-get 'position medium))
+                        (fmt (alist-get 'format medium))
+                        (title (alist-get 'title medium))
+                        (tracks (alist-get 'tracks medium))
+                        (label (string-join
+                                (delq nil
+                                  (list (when pos (format "%s" pos))
+                                        title
+                                        (when fmt (format "(%s)" fmt))))
+                                " ")))
+                   (concat "*** " (if (and label (not (string-empty-p label)))
+                                       label
+                                     (format "Medium %s" (or pos "?")))
+                           "\n"
+                           (if tracks
+                               (mapconcat
+                                (lambda (track)
+                                  (let* ((n (or (alist-get 'number track) "?"))
+                                         (t (musicbrainz--track-title track))
+                                         (l (musicbrainz--format-length
+                                             (or (alist-get 'length track)
+                                                 (alist-get 'length (alist-get 'recording track)))))
+                                         (a (musicbrainz--track-artist-str track)))
+                                    (string-join
+                                     (delq nil
+                                       (list (format "    %s." n) t
+                                             (when a (format "— %s" a))
+                                             (when l (format "(%s)" l))))
+                                     " ")))
+                                tracks "\n")
+                             "(no tracks)"))))
+               media "\n") "\n"))))
+
+(defun musicbrainz--credits-to-org (entity)
+  "Format ENTITY relations as Org ** Credits section."
+  (let ((relations (alist-get 'relations entity)))
+    (when relations
+      (concat "** Credits\n"
+              (mapconcat
+               (lambda (r)
+                 (let* ((type (or (alist-get 'type r) "(unknown)"))
+                        (name (or (musicbrainz--relation-credit-str r)
+                                  (musicbrainz--relation-target-name r)
+                                  "(unnamed)"))
+                        (attrs (musicbrainz--relation-attributes-str r)))
+                   (format "- %s :: %s%s" type name
+                           (if attrs (format " (%s)" attrs) ""))))
+               relations "\n") "\n"))))
+
+(defun musicbrainz--tags-to-org (entity)
+  "Format ENTITY tags as Org ** Tags section."
+  (let ((tags (alist-get 'tags entity)))
+    (when tags
+      (concat "** Tags\n"
+              (mapconcat
+               (lambda (t)
+                 (format "- %s" (alist-get 'name t)))
+               tags "\n") "\n"))))
+
+(defun musicbrainz--entity-data-to-org (json-ld)
+  "Format JSON-LD alist simple fields as Org ** Entity Data section."
+  (when json-ld
+    (let (pairs
+          (skip '(@type @id mb-type relations media recordings
+                  works releases)))
+      (dolist (pair json-ld)
+        (let ((k (car pair))
+              (v (cdr pair)))
+          (when (and (symbolp k) (not (memq k skip))
+                     (or (stringp v) (numberp v)))
+            (push (format "- %s :: %s" k v) pairs))))
+      (when pairs
+        (concat "** Entity Data\n"
+                (string-join (nreverse pairs) "\n") "\n")))))
+
+(defun musicbrainz--entity-org-body (entity-type entity json-ld)
+  "Assemble Org body sections for ENTITY.
+Combines info, tracklist, credits, tags, and entity data sections."
+  (string-join
+   (delq nil
+     (list
+      (musicbrainz--entity-info-to-org entity)
+      (musicbrainz--tracklist-to-org entity)
+      (musicbrainz--credits-to-org entity)
+      (musicbrainz--tags-to-org entity)
+      (musicbrainz--entity-data-to-org json-ld)))
+   "\n"))
+
 (defun musicbrainz--entity-to-org-properties (entity-type entity &optional json-ld)
   "Return a string with ENTITY metadata as Org mode :PROPERTIES: drawer."
   (mz-org-props (mz-entity-create entity-type (or (alist-get 'id entity) "") entity) json-ld))
@@ -1591,7 +1703,7 @@ ON-TOGGLE is a zero-arg function called when the sort toggle button is clicked."
     (message "Org properties shown in buffer *MB Org Properties*")))
 
 (defun musicbrainz--save-to-org (entity-type entity &optional json-ld)
-  "Save full entity page as an Org file.
+  "Save full entity page as a structured Org file.
 File is created at `musicbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
   (let* ((title (musicbrainz--entity-name entity))
          (type-str (format "%s" entity-type))
@@ -1603,12 +1715,9 @@ File is created at `musicbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
          (slug (replace-regexp-in-string "[^a-z0-9]+" "-" (downcase title)))
          (ts (format-time-string "%Y%m%d%H%M%S"))
          (file (expand-file-name (format "%s-%s.org" ts slug) dir))
-         (page (with-current-buffer (current-buffer)
-                 (let ((text (buffer-substring-no-properties (point-min) (point-max))))
-                   (when (string-match "\n\\[Save to Org" text)
-                     (setq text (substring text 0 (match-beginning 0))))
-                   (string-trim text))))
-         (content (format "* %s\n%s\n%s\n" title props page)))
+         (content (format "* %s\n%s\n%s\n"
+                          title props
+                          (musicbrainz--entity-org-body entity-type entity json-ld))))
     (make-directory dir t)
     (with-temp-file file
       (insert content))
