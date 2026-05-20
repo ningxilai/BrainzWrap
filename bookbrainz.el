@@ -717,18 +717,6 @@ File is created at `bookbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
 (defun bookbrainz--revert-buffer (&optional _ignore-auto _noconfirm)
   (call-interactively #'bookbrainz-search))
 
-(defun bookbrainz-browse-url ()
-  "Open current entity in web browser."
-  (interactive)
-  (when-let* ((bbid (get-text-property (point) 'bookbrainz-bbid))
-              (etype (get-text-property (point) 'bookbrainz-entity-type)))
-    (browse-url (format "https://bookbrainz.org/%s/%s" etype bbid))))
-
-(defun bookbrainz-save-to-org ()
-  "Save current entity to an Org file."
-  (interactive)
-  (user-error "Use the Save to Org button in entity detail view"))
-
 
 ;;; Entry point
 

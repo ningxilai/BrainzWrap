@@ -1639,17 +1639,7 @@ File is created at `musicbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
 (defun musicbrainz--revert-buffer (&optional _ignore-auto _noconfirm)
   (call-interactively #'musicbrainz-search))
 
-(defun musicbrainz-browse-url ()
-  "Open current entity in web browser."
-  (interactive)
-  (when-let* ((mbid (get-text-property (point) 'musicbrainz-mbid))
-             (etype (get-text-property (point) 'musicbrainz-entity-type)))
-    (browse-url (format "https://musicbrainz.org/%s/%s" etype mbid))))
 
-(defun musicbrainz-save-to-org ()
-  "Save current entity to an Org file."
-  (interactive)
-  (user-error "Use the Save to Org button in entity detail view"))
 
 
 ;;; Entry point
