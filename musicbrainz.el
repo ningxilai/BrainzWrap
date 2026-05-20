@@ -1591,7 +1591,7 @@ ON-TOGGLE is a zero-arg function called when the sort toggle button is clicked."
     (message "Org properties shown in buffer *MB Org Properties*")))
 
 (defun musicbrainz--save-to-org (entity-type entity &optional json-ld)
-  "Save ENTITY as an Org file with a :PROPERTIES: drawer.
+  "Save full entity page as an Org file.
 File is created at `musicbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
   (let* ((title (musicbrainz--entity-name entity))
          (type-str (format "%s" entity-type))
@@ -1603,7 +1603,12 @@ File is created at `musicbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
          (slug (replace-regexp-in-string "[^a-z0-9]+" "-" (downcase title)))
          (ts (format-time-string "%Y%m%d%H%M%S"))
          (file (expand-file-name (format "%s-%s.org" ts slug) dir))
-         (content (format "* %s\n%s\n" title props)))
+         (page (with-current-buffer (current-buffer)
+                 (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+                   (when (string-match "\n\\[Save to Org" text)
+                     (setq text (substring text 0 (match-beginning 0))))
+                   (string-trim text))))
+         (content (format "* %s\n%s\n%s\n" title props page)))
     (make-directory dir t)
     (with-temp-file file
       (insert content))
