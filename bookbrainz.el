@@ -3,6 +3,7 @@
 ;; Author: opencode
 ;; Keywords: query , bookbrainz
 ;; URL: https://github.com/ningxilai/BrainzWrap
+;; Package-Requires: ((emacs "29.1") (vui "1.0.0"))
 ;; SPDX-License-Identifier: CC0-1.0
 
 ;; To the extent possible under law, the author has waived all
