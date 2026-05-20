@@ -1614,19 +1614,19 @@ ON-TOGGLE is a zero-arg function called when the sort toggle button is clicked."
                            "\n"
                            (if tracks
                                (mapconcat
-                                (lambda (track)
-                                  (let* ((n (or (alist-get 'number track) "?"))
-                                         (t (musicbrainz--track-title track))
-                                         (l (musicbrainz--format-length
-                                             (or (alist-get 'length track)
-                                                 (alist-get 'length (alist-get 'recording track)))))
-                                         (a (musicbrainz--track-artist-str track)))
-                                    (string-join
-                                     (delq nil
-                                       (list (format "    %s." n) t
-                                             (when a (format "— %s" a))
-                                             (when l (format "(%s)" l))))
-                                     " ")))
+                                 (lambda (track)
+                                   (let* ((num (or (alist-get 'number track) "?"))
+                                          (tt (musicbrainz--track-title track))
+                                          (len (musicbrainz--format-length
+                                                (or (alist-get 'length track)
+                                                    (alist-get 'length (alist-get 'recording track)))))
+                                          (art (musicbrainz--track-artist-str track)))
+                                     (string-join
+                                      (delq nil
+                                        (list (format "    %s." num) tt
+                                              (when art (format "— %s" art))
+                                              (when len (format "(%s)" len))))
+                                      " ")))
                                 tracks "\n")
                              "(no tracks)"))))
                media "\n") "\n"))))
@@ -1652,10 +1652,10 @@ ON-TOGGLE is a zero-arg function called when the sort toggle button is clicked."
   (let ((tags (alist-get 'tags entity)))
     (when tags
       (concat "** Tags\n"
-              (mapconcat
-               (lambda (t)
-                 (format "- %s" (alist-get 'name t)))
-               tags "\n") "\n"))))
+               (mapconcat
+                (lambda (tag)
+                  (format "- %s" (alist-get 'name tag)))
+                tags "\n") "\n"))))
 
 (defun musicbrainz--entity-data-to-org (json-ld)
   "Format JSON-LD alist simple fields as Org ** Entity Data section."
@@ -1673,7 +1673,7 @@ ON-TOGGLE is a zero-arg function called when the sort toggle button is clicked."
         (concat "** Entity Data\n"
                 (string-join (nreverse pairs) "\n") "\n")))))
 
-(defun musicbrainz--entity-org-body (entity-type entity json-ld)
+(defun musicbrainz--entity-org-body (entity json-ld)
   "Assemble Org body sections for ENTITY.
 Combines info, tracklist, credits, tags, and entity data sections."
   (string-join
@@ -1717,7 +1717,7 @@ File is created at `musicbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
          (file (expand-file-name (format "%s-%s.org" ts slug) dir))
          (content (format "* %s\n%s\n%s\n"
                           title props
-                          (musicbrainz--entity-org-body entity-type entity json-ld))))
+                          (musicbrainz--entity-org-body entity json-ld))))
     (make-directory dir t)
     (with-temp-file file
       (insert content))
