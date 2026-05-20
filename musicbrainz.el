@@ -1633,6 +1633,8 @@ File is created at `musicbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
   "Major mode for MusicBrainz client.
 \\{musicbrainz-mode-map}"
   (setq-local revert-buffer-function #'musicbrainz--revert-buffer))
+(set-keymap-parent musicbrainz-mode-map
+                   (make-composed-keymap widget-keymap special-mode-map))
 
 (defun musicbrainz--revert-buffer (&optional _ignore-auto _noconfirm)
   (call-interactively #'musicbrainz-search))

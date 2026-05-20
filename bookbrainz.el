@@ -711,6 +711,8 @@ File is created at `bookbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
   "Major mode for BookBrainz client.
 \\{bookbrainz-mode-map}"
   (setq-local revert-buffer-function #'bookbrainz--revert-buffer))
+(set-keymap-parent bookbrainz-mode-map
+                   (make-composed-keymap widget-keymap special-mode-map))
 
 (defun bookbrainz--revert-buffer (&optional _ignore-auto _noconfirm)
   (call-interactively #'bookbrainz-search))
