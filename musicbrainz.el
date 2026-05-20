@@ -106,9 +106,17 @@ Default 15 requests per 18 seconds, per MusicBrainz API recommendations."
   "Return inc list for ENTITY's lookup call.")
 (cl-defmethod mz-inc ((_e mz-entity)) '("tags"))
 (cl-defmethod mz-inc ((_e mz-artist)) '("tags" "ratings"))
-(cl-defmethod mz-inc ((_e mz-release)) '("artist-credits" "labels" "recordings" "tags"))
+(cl-defmethod mz-inc ((_e mz-release))
+  '("artist-credits" "labels" "recordings" "tags"
+    "annotation" "artist-rels" "label-rels" "recording-rels"
+    "release-group-rels" "release-rels" "url-rels" "work-rels"
+    "recording-level-rels" "release-group-level-rels" "work-level-rels"))
 (cl-defmethod mz-inc ((_e mz-release-group)) '("artist-credits" "tags" "ratings"))
 (cl-defmethod mz-inc ((_e mz-recording)) '("artist-credits" "releases" "tags" "ratings"))
+(cl-defmethod mz-inc ((_e mz-series))
+  '("annotation" "tags"
+    "artist-rels" "label-rels" "recording-rels"
+    "release-rels" "release-group-rels" "series-rels" "url-rels" "work-rels"))
 (cl-defmethod mz-inc ((_e mz-work)) '("tags" "ratings"))
 (cl-defmethod mz-inc ((_e mz-label)) '("tags" "ratings"))
 (cl-defmethod mz-inc ((_e mz-event)) '("tags" "ratings"))
@@ -1007,10 +1015,12 @@ Uses `musicbrainz-results' component with Prev/Next pagination."
                           (work-results nil)
                           (work-total 0)
                           (work-loading nil)
-                          (release-results nil)
-                          (release-total 0)
-                          (release-loading nil))
-                  :on-mount
+                           (release-results nil)
+                           (release-total 0)
+                           (release-loading nil)
+                            (track-pages nil)
+                           (credits-order nil))
+                   :on-mount
                   (let ((timer (musicbrainz--load-entity-async
                                 entity-type mbid
                                 (vui-async-callback (entity json-ld)
@@ -1084,9 +1094,19 @@ Uses `musicbrainz-results' component with Prev/Next pagination."
                                  (vui-text "Type: " :face 'shadow)
                                  (vui-text (musicbrainz--entity-type-label entity-type)))
                                 (vui-newline)
-                                 ;; Type-specific content
-                                  (mz-detail (mz-entity-create entity-type mbid entity))
-                                ;; Entity Data section (inlined: regular fields + paginated sub-sections)
+                                  ;; Type-specific content
+                                   (mz-detail (mz-entity-create entity-type mbid entity))
+                                 ;; Tracklist section (release only)
+                                 (when (equal entity-type "release")
+                                   (vui-newline)
+                                   (musicbrainz--tracklist-section entity track-pages))
+                                  ;; Credits section (when relations data present)
+                                  (when (alist-get 'relations entity)
+                                    (vui-newline)
+                                    (musicbrainz--credits-section entity credits-order
+                                                                     (lambda ()
+                                                                       (vui-set-state :credits-order (not credits-order)))))
+                                 ;; Entity Data section (inlined: regular fields + paginated sub-sections)
                                 (when json-ld
                                   (vui-newline)
                                   (let ((fields (musicbrainz--json-ld-fields
@@ -1371,6 +1391,183 @@ Appends to `release-results' state."
           (musicbrainz--meta "End" (alist-get 'end life)))))
     (musicbrainz--meta "Disambiguation" (alist-get 'disambiguation entity))
     (musicbrainz--tags-section entity)))
+
+;;; Tracklist display (release only)
+
+(defvar musicbrainz--track-page-size 50
+  "Max tracks per page in the release tracklist display.")
+
+
+(defun musicbrainz--format-length (ms)
+  "Format milliseconds as \"m:ss\" or nil if MS is nil."
+  (when ms
+    (format "%d:%02d" (/ ms 60000) (/ (mod ms 60000) 1000))))
+
+(defun musicbrainz--track-title (track)
+  "Return the display title for TRACK.
+Prefer track's own title, fall back to the nested recording's title."
+  (or (alist-get 'title track)
+      (alist-get 'title (alist-get 'recording track))
+      "(untitled)"))
+
+(defun musicbrainz--track-artist-str (track)
+  "Return per-track artist-credit string, or nil if absent."
+  (let ((ac (or (alist-get 'artist-credit track)
+                (alist-get 'artist-credit (alist-get 'recording track)))))
+    (when ac
+      (mapconcat (lambda (c)
+                   (if (stringp c) c
+                     (concat (alist-get 'name c)
+                             (or (alist-get 'joinphrase c) ""))))
+                 ac ""))))
+
+(defun musicbrainz--track-summary (track)
+  "Return a vui-text line for TRACK.
+Format: \"{number}. {title} — {artist} ({length})\"
+Artist is omitted when nil."
+  (let* ((number (format "%s." (or (alist-get 'number track) "?")))
+         (title (musicbrainz--track-title track))
+         (len (musicbrainz--format-length
+               (or (alist-get 'length track)
+                   (alist-get 'length (alist-get 'recording track)))))
+         (artist (musicbrainz--track-artist-str track)))
+    (vui-text (string-join
+               (delq nil
+                     (list number title
+                           (when artist (format "— %s" artist))
+                           (when len (format "(%s)" len))))
+               " "))))
+
+(defun musicbrainz--medium-section (medium position track-pages)
+  "Render a single MEDIUM at POSITION as a collapsible section.
+TRACK-PAGES is an alist of medium-position → current-page.
+Tracks are paginated at `musicbrainz--track-page-size' per page."
+  (let* ((format (alist-get 'format medium))
+         (fmt-str (if format (format ": %s" format) ""))
+         (track-count (alist-get 'track-count medium))
+         (tracks (alist-get 'tracks medium))
+         (has-tracks (and (listp tracks) (> (length tracks) 0)))
+         (total (if has-tracks (length tracks) 0))
+         (page (or (alist-get position track-pages) 1))
+         (page-size musicbrainz--track-page-size)
+         (total-pages (max 1 (ceiling (max total 1) page-size)))
+         (start (* (1- page) page-size))
+         (page-tracks (and has-tracks
+                           (seq-subseq tracks start
+                                       (min (+ start page-size) total)))))
+    (vui-collapsible
+     :title (format "Tracklist: %d%s (%d track%s)"
+                    position fmt-str track-count
+                    (if (= track-count 1) "" "s"))
+     (if has-tracks
+         (apply #'vui-vstack :spacing 0
+                (nconc
+                 (mapcar #'musicbrainz--track-summary page-tracks)
+                 (when (> total-pages 1)
+                   (list
+                    (vui-hstack
+                     (vui-text "  " :face 'shadow)
+                     (when (> page 1)
+                       (vui-button "[Prev]"
+                         :on-click (lambda ()
+                                     (vui-set-state
+                                      :track-pages
+                                      (let ((alist (copy-tree track-pages)))
+                                        (setf (alist-get position alist)
+                                              (1- page))
+                                        alist)))))
+                     (vui-text (format "Page %d/%d" page total-pages)
+                               :face 'shadow)
+                     (when (< page total-pages)
+                       (vui-button "[Next]"
+                         :on-click (lambda ()
+                                     (vui-set-state
+                                      :track-pages
+                                      (let ((alist (copy-tree track-pages)))
+                                        (setf (alist-get position alist)
+                                              (1+ page))
+                                        alist))))))))))
+       (vui-text "(no tracks)" :face 'shadow)))))
+
+(defun musicbrainz--tracklist-section (entity track-pages)
+  "Render all mediums in ENTITY as a tracklist section.
+TRACK-PAGES is passed to each medium for pagination state."
+  (let ((media (alist-get 'media entity)))
+    (when media
+      (vui-collapsible :title (format "Tracklist")
+        (apply #'vui-vstack :spacing 0
+               (mapcar (lambda (medium)
+                         (let ((pos (alist-get 'position medium)))
+                           (musicbrainz--medium-section medium pos track-pages)))
+                       media))))))
+
+;;; Credits display (release only)
+
+(defun musicbrainz--relation-target-name (relation)
+  "Extract display name from a RELATION alist based on target-type.
+For URLs, returns the resource string.  For other entities, returns name."
+  (let* ((target-type (alist-get 'target-type relation))
+         (target (alist-get (intern target-type) relation)))
+    (cond
+     ((equal target-type "url")
+      (or (alist-get 'resource target) "(URL)"))
+     ((listp target)
+      (or (alist-get 'name target)
+          (alist-get 'title target)
+          (alist-get 'id target)
+          "(unnamed)"))
+     (t "(unknown)"))))
+
+(defun musicbrainz--relation-attributes-str (relation)
+  "Return formatted attribute string for RELATION, or nil.
+E.g. '(\"designer\") → \"(designer)\""
+  (let ((attrs (alist-get 'attributes relation)))
+    (when attrs
+      (format "(%s)" (mapconcat #'identity (if (listp attrs) attrs (list attrs)) ", ")))))
+
+(defun musicbrainz--relation-credit-str (relation)
+  "Return source-credit or target-credit for RELATION if present, or nil."
+  (or (let ((sc (alist-get 'source-credit relation)))
+        (and (stringp sc) (not (string-empty-p sc)) sc))
+      (let ((tc (alist-get 'target-credit relation)))
+        (and (stringp tc) (not (string-empty-p tc)) tc))))
+
+(defun musicbrainz--relation-summary (relation)
+  "Return a vui-hstack line for a single RELATION.
+Format: \"TYPE: Target-Name (attributes)\""
+  (let* ((type (or (alist-get 'type relation) "(unknown type)"))
+         (target-name (musicbrainz--relation-target-name relation))
+         (attrs (musicbrainz--relation-attributes-str relation))
+         (credit (musicbrainz--relation-credit-str relation))
+         (display-name (or credit target-name))
+         (is-url (equal (alist-get 'target-type relation) "url")))
+    (vui-hstack
+     (vui-text (format " %s:" type) :face 'bold :width 16)
+     (vui-text (if is-url
+                   (format "%s" display-name)
+                 (format "%s" display-name)))
+     (when attrs
+       (vui-text (format " %s" attrs) :face 'shadow))
+     (when is-url
+       (vui-text " [info]" :face 'shadow)))))
+
+(defun musicbrainz--credits-section (entity sort-order on-toggle)
+  "Render all relations in ENTITY as a collapsible Credits section.
+When SORT-ORDER is non-nil, sort relations by ordering-key numerically.
+ON-TOGGLE is a zero-arg function called when the sort toggle button is clicked."
+  (let* ((relations (alist-get 'relations entity))
+         (sorted (if (and relations sort-order)
+                     (seq-sort-by (lambda (r)
+                                    (or (alist-get 'ordering-key r) most-positive-fixnum))
+                                  #'<
+                                  relations)
+                   relations)))
+    (when sorted
+      (vui-collapsible :title (format "Credits")
+        (apply #'vui-vstack :spacing 0
+               (vui-button (if sort-order "Default Order" "Sort by Order")
+                           :on-click on-toggle)
+               (mapcar #'musicbrainz--relation-summary sorted))))))
 
 ;;; Org integration
 

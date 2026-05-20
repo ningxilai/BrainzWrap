@@ -388,3 +388,42 @@ Byte-compiles clean (only pre-existing docstring width warnings).
 - musicbrainz has `mb-let*` / `mb-when-let*` macros (5 uses), bookbrainz uses raw `alist-get`
 - Large structural duplication between the two files (23 patterns), user chose not to extract shared lib
 - No musicbrainz tests yet
+
+## Session 2026-05-20: 修正泛型回退的括号不平衡
+
+### What was done
+- 在 `musicbrainz--json-ld-fields` 的 `or` 子句补上了一对括号：`items))` → `items))))`（补回 let* bindings list 闭括号）、`data)))` → `data))`（让 data 重新成为 mapcan 第二参数）
+- 泛型回退逻辑（收集所有 string-typed 字段、最后 resort `[type]` 标记）已在 `9c2a7f3` 中正确实现，仅括号少了一个导致运行时报 `(wrong-number-of-arguments mapcan 1)`；修完 119 测试全绿
+- `check-parens` 无法发现此类语义闭合错误，必须靠 `read` 执行或实际加载暴露 `(end-of-file)` 和运行时错误
+- Commits: amended `9c2a7f3` → `b527a62`（合并修正，历史干净）
+
+### Remaining
+- musicbrainz 尚无单元测试覆盖 `musicbrainz--json-ld-fields`（漏报原因）
+
+## Session 2026-05-20b: Tracklist + Credits for release
+
+### What was done
+- `mz-inc` for release 新增 `"_relations"`、`"annotation"`、11 个 `*-rels` inc 参数、`recording-level-rels`、`release-group-level-rels`、`work-level-rels`
+- 新增 entity view state: `track-pages`（alist of medium-position → current-page, 用于 client-side track 分页）
+- 新增 10 个辅助函数:
+
+  | 函数 | 职责 |
+  |------|------|
+  | `musicbrainz--format-length` | ms → `"m:ss"` |
+  | `musicbrainz--track-title` | track/recording title 取值链 |
+  | `musicbrainz--track-artist-str` | per-track artist-credit 格式化 |
+  | `musicbrainz--track-summary` | 单行 track 显示 `"{n}. {title} — {artist} (m:ss)"` |
+  | `musicbrainz--medium-section` | 单个 medium collapsible + 50/page 分页 |
+  | `musicbrainz--tracklist-section` | 遍历 `entity.media` 渲染所有 mediums |
+  | `musicbrainz--relation-target-name` | 从 relation alist 提取目标实体名称 |
+  | `musicbrainz--relation-attributes-str` | 格式化 attributes → `"(attr)"` |
+  | `musicbrainz--relation-credit-str` | 提取 source-credit/target-credit |
+  | `musicbrainz--relation-summary` | 单行 relation 显示 `"Type: name (attr)"` |
+  | `musicbrainz--credits-section` | 遍历 `entity.relations` 渲染所有 credits |
+
+- Tracklist section 插入在 entity view 的 `mz-detail` 与 Entity Data 之间；Credits section 紧随其后
+- `musicbrainz--track-page-size` = 50（可定制）
+
+### Remaining
+- musicbrainz 尚无单元测试覆盖 `musicbrainz--json-ld-fields` 及新函数
+- Series `ordering-key` 排序：当前 credits 按 API 返回顺序显示；可增加 `seq-sort-by` 按 `ordering-key` 排序
