@@ -933,6 +933,7 @@ Uses `vui-collapsible' for nested structures."
                                                        (let ((strings (delq nil
                                                                            (mapcar (lambda (pair)
                                                                                      (and (stringp (cdr pair))
+                                                                                          (not (string-empty-p (cdr pair)))
                                                                                           (cdr pair)))
                                                                                    item))))
                                                          (when strings
@@ -1111,7 +1112,8 @@ Uses `musicbrainz-results' component with Prev/Next pagination."
                                 (when json-ld
                                   (vui-newline)
                                   (let ((fields (musicbrainz--json-ld-fields
-                                                 json-ld '(@type @id mb-type recordings works releases))))
+                                                 json-ld '(@type @id mb-type recordings works releases
+                                                           relations media))))
                                     (when (or fields recording-results work-results release-results show-raw)
                                       (vui-collapsible :title "Entity Data"
                                                        (apply #'vui-vstack :spacing 0
