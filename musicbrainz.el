@@ -1137,16 +1137,16 @@ Uses `musicbrainz-results' component with Prev/Next pagination."
                                                                        (list (vui-text (let ((json-encoding-pretty-print t)) (json-encode json-ld)) :face 'shadow))))))))))
                                 ;; Actions
                                 (vui-newline)
-                                 (vui-hstack :spacing 0
-                                  (vui-button "Save to Org"
-                                              :on-click (lambda () (musicbrainz--save-to-org entity-type entity json-ld)))
-                                  (vui-button "Open in Browser"
-                                              :on-click (lambda ()
-                                                          (browse-url
-                                                           (format "https://musicbrainz.org/%s/%s" entity-type mbid))))
-                                  (vui-button "Org Props"
-                                              :on-click (lambda ()
-                                                          (musicbrainz--show-org-properties entity-type entity json-ld)))
+                                  (vui-hstack :spacing 0
+                                   (vui-button "Save to Org"
+                                               :on-click (lambda () (musicbrainz--save-to-org entity-type entity json-ld)))
+                                   (vui-button "Org Props"
+                                               :on-click (lambda ()
+                                                           (musicbrainz--show-org-properties entity-type entity json-ld)))
+                                   (vui-button "Open in Browser"
+                                               :on-click (lambda ()
+                                                           (browse-url
+                                                            (format "https://musicbrainz.org/%s/%s" entity-type mbid))))
                                   (vui-button "Close"
                                               :on-click (lambda () (quit-window))))))))
 
