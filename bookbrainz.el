@@ -22,6 +22,7 @@
 
 (require 'cl-lib)
 (require 'seq)
+(require 'subr-x)
 (require 'json)
 (require 'url)
 (require 'vui)
@@ -415,6 +416,157 @@ E.g. \"+001954-07-29\" -> \"1954-07-29\", \"+001974\" -> \"1974\"."
         (bookbrainz--meta "Author Credits" ac)))
     (bookbrainz--meta "Disambiguation" (alist-get 'disambiguation entity))))
 
+ 
+;;; Section display helpers
+
+(defun bookbrainz--entity-data-fields (data &optional skip-keys)
+  "Return vui children for key-value pairs in alist DATA.
+Skips keys in SKIP-KEYS. Uses `vui-collapsible' for nested structures."
+  (let ((result nil))
+    (dolist (pair data (nreverse result))
+      (let ((k (car pair))
+            (v (cdr pair)))
+        (when (and v (not (memq k (or skip-keys '(bbid))))
+                   (or (not (stringp v)) (not (string-empty-p v))))
+          (setq result
+                (nconc result
+                       (cond
+                        ((stringp v)
+                         (list (bookbrainz--meta (format "%s" k) v)))
+                        ((and (listp v) (consp (car v)))
+                         (if (consp (caar v))
+                             (let ((names (delq nil
+                                               (mapcar (lambda (item)
+                                                         (or (alist-get 'name item)
+                                                             (alist-get 'value item)
+                                                             (alist-get 'label item)
+                                                             (when (stringp (car item))
+                                                               (cdr item))))
+                                                       v))))
+                               (list (bookbrainz--meta (format "%s" k)
+                                                       (mapconcat #'identity names ", "))))
+                           (let ((name (or (alist-get 'name v) (alist-get 'label v))))
+                             (if name
+                                 (list (bookbrainz--meta (format "%s" k) (format "%s" name)))
+                               (list
+                                (vui-collapsible :title (format "%s" k) :key k
+                                  (apply #'vui-vstack :spacing 0
+                                         (delq nil
+                                               (mapcar (lambda (sv-pair)
+                                                         (let ((sk (car sv-pair))
+                                                               (sv (cdr sv-pair)))
+                                                           (when (and sv (or (not (stringp sv))
+                                                                              (not (string-empty-p sv))))
+                                                             (bookbrainz--meta (format "%s" sk)
+                                                                               (if (stringp sv) sv
+                                                                                 (format "%s" sv))))))
+                                                       v)))))))))
+                        ((listp v)
+                         (list (bookbrainz--meta (format "%s" k)
+                                                 (mapconcat (lambda (x) (format "%s" x)) v ", "))))
+                        (t
+                         (list (bookbrainz--meta (format "%s" k) (format "%s" v))))))))))))
+
+(defun bookbrainz--aliases-section (aliases)
+  "Render collapsible Aliases section.
+ALIASES is a list of alist items with `name', `sortName', `language', `primary'."
+  (vui-collapsible :title (format "Aliases (%d)" (length aliases))
+    (apply #'vui-vstack :spacing 0
+           (mapcar (lambda (a)
+                     (let ((name (or (alist-get 'name a) "(unnamed)"))
+                           (lang (alist-get 'language a))
+                           (primary (alist-get 'primary a))
+                           (sort (alist-get 'sortName a)))
+                        (vui-hstack
+                          (vui-text (format " %s" name))
+                          (when lang
+                            (vui-text (format " (%s%s)" lang (if primary " *" ""))
+                                      :face 'shadow))
+                         (when (and sort (not (equal sort name)))
+                           (vui-text (format " [%s]" sort) :face 'shadow)))))
+                   aliases))))
+
+(defun bookbrainz--identifiers-section (identifiers)
+  "Render collapsible Identifiers section.
+IDENTIFIERS is a list of alist items with `type' and `value'."
+  (vui-collapsible :title (format "Identifiers (%d)" (length identifiers))
+    (apply #'vui-vstack :spacing 0
+           (mapcar (lambda (id)
+                     (let ((type (alist-get 'type id))
+                           (value (alist-get 'value id)))
+                       (bookbrainz--meta (or type "(unknown)") (or value ""))))
+                   identifiers))))
+
+(defun bookbrainz--load-relationship-names (relationships page page-size)
+  "Load display names for relationships on PAGE, caching in VUI state.
+Fires up to PAGE-SIZE lookups staggered by idle timers."
+  (let* ((start (* (1- page) page-size))
+         (page-rels (seq-subseq relationships start
+                               (min (+ start page-size) (length relationships))))
+         (delay 0.0))
+    (dolist (r page-rels)
+      (let* ((bbid (alist-get 'targetBbid r))
+             (type (alist-get 'targetEntityType r)))
+        (when (and bbid type)
+          (setq delay (+ delay 0.05))
+          (run-with-idle-timer delay nil
+            (vui-with-async-context
+             (condition-case err
+                  (let ((data (bookbrainz--lookup type bbid)))
+                    (when data
+                      (let ((name (or (alist-get 'name (alist-get 'defaultAlias data))
+                                      (alist-get 'name data)
+                                      bbid)))
+                        (vui-set-state :relationship-names
+                          (lambda (old)
+                            (cons (cons bbid name)
+                                  (cl-remove bbid old :key #'car
+                                              :test #'equal)))))))
+                (error
+                 (message "Failed to load name for %s/%s: %s" type bbid err))))))))))
+
+(defun bookbrainz--relationships-section
+    (relationships page page-size-page relationship-names on-page-change)
+  "Render collapsible Relationships section with pagination.
+PAGE is current page (1-indexed).  PAGE-SIZE-PAGE is items per page.
+RELATIONSHIP-NAMES is an alist of (bbid . name).
+ON-PAGE-CHANGE is a one-arg function called with the new page number."
+  (let* ((total (length relationships))
+         (total-pages (max 1 (ceiling total page-size-page)))
+         (start (* (1- page) page-size-page))
+         (page-rels (seq-subseq relationships start
+                               (min (+ start page-size-page) total))))
+    (vui-collapsible :title (format "Relationships (%d)" total)
+      (apply #'vui-vstack :spacing 0
+             (mapcar (lambda (r)
+                       (let* ((type (or (alist-get 'relationshipTypeName r) "(unknown)"))
+                              (target (or (alist-get 'targetBbid r) ""))
+                              (target-type (or (alist-get 'targetEntityType r) ""))
+                              (phrase (or (alist-get 'linkPhrase r) ""))
+                              (display-name (alist-get target relationship-names
+                                                       nil nil #'equal))
+                              (label (or display-name
+                                         (if (string-empty-p target) "(no target)"
+                                           (substring target 0 8)))))
+                         (vui-hstack
+                           (vui-text (format " %s:" type) :face 'bold :width 16)
+                           (vui-button label
+                             :on-click (lambda ()
+                                         (unless (string-empty-p target)
+                                           (bookbrainz-open-entity target-type target))))
+                           (vui-text (format " %s" phrase) :face 'shadow))))
+                     page-rels)
+             (when (> total-pages 1)
+               (list
+                (vui-hstack
+                 (when (> page 1)
+                   (vui-button "[Prev]"
+                     :on-click (lambda () (funcall on-page-change (1- page)))))
+                 (vui-text (format "Page %d/%d" page total-pages) :face 'shadow)
+                 (when (< page total-pages)
+                   (vui-button "[Next]"
+                     :on-click (lambda () (funcall on-page-change (1+ page))))))))))))
+
 
 ;;; Async entity loading
 
@@ -430,8 +582,52 @@ Callbacks should be created with `vui-async-callback' or `vui-with-async-context
      (condition-case err
          (let* ((entity (bookbrainz--lookup entity-type bbid)))
            (funcall on-success entity))
-       (error
-        (funcall on-error err))))))
+        (error
+         (funcall on-error err))))))
+
+(defun bookbrainz--load-aliases-async (entity-type bbid)
+  "Fetch aliases for ENTITY-TYPE entity with BBID."
+  (run-with-idle-timer
+   0.1 nil
+   (vui-with-async-context
+    (condition-case err
+        (let* ((response (bookbrainz--api-request
+                          (format "/%s/%s/aliases" entity-type bbid)))
+               (aliases (alist-get 'aliases response)))
+          (when aliases
+            (vui-set-state :aliases aliases)))
+      (error
+       (message "BookBrainz aliases error: %s" (error-message-string err)))))))
+
+(defun bookbrainz--load-identifiers-async (entity-type bbid)
+  "Fetch identifiers for ENTITY-TYPE entity with BBID."
+  (run-with-idle-timer
+   0.1 nil
+   (vui-with-async-context
+    (condition-case err
+        (let* ((response (bookbrainz--api-request
+                          (format "/%s/%s/identifiers" entity-type bbid)))
+               (identifiers (alist-get 'identifiers response)))
+          (when identifiers
+            (vui-set-state :identifiers identifiers)))
+      (error
+       (message "BookBrainz identifiers error: %s" (error-message-string err)))))))
+
+(defun bookbrainz--load-relationships-async (entity-type bbid)
+  "Fetch relationships for ENTITY-TYPE entity with BBID.
+Also triggers name loading for page 1."
+  (run-with-idle-timer
+   0.1 nil
+   (vui-with-async-context
+    (condition-case err
+        (let* ((response (bookbrainz--api-request
+                          (format "/%s/%s/relationships" entity-type bbid)))
+               (relationships (alist-get 'relationships response)))
+          (when relationships
+            (vui-set-state :relationships relationships)
+            (bookbrainz--load-relationship-names relationships 1 8)))
+      (error
+       (message "BookBrainz relationships error: %s" (error-message-string err)))))))
 
 
 ;;; VUI Component — Search Input
@@ -578,14 +774,22 @@ Callbacks should be created with `vui-async-callback' or `vui-with-async-context
   :state ((entity nil)
           (loading (not (bookbrainz--entity-type-has-api-p entity-type)))
           (error nil)
-          (show-raw nil))
+          (show-raw nil)
+          (aliases nil)
+          (identifiers nil)
+          (relationships nil)
+          (relationship-page 1)
+          (relationship-names nil))
   :on-mount
   (if (bookbrainz--entity-type-has-api-p entity-type)
       (let ((timer (bookbrainz--load-entity-async
                     entity-type bbid
                     (vui-async-callback (entity)
                       (vui-set-state :entity entity)
-                      (vui-set-state :loading nil))
+                      (vui-set-state :loading nil)
+                      (bookbrainz--load-aliases-async entity-type bbid)
+                      (bookbrainz--load-identifiers-async entity-type bbid)
+                      (bookbrainz--load-relationships-async entity-type bbid))
                     (vui-async-callback (err)
                       (vui-set-state :error (error-message-string err))
                       (vui-set-state :loading nil)))))
@@ -617,11 +821,18 @@ Callbacks should be created with `vui-async-callback' or `vui-with-async-context
                   (lambda ()
                     (vui-set-state :loading t)
                     (vui-set-state :error nil)
+                    (vui-set-state :aliases nil)
+                    (vui-set-state :identifiers nil)
+                    (vui-set-state :relationships nil)
+                    (vui-set-state :show-raw nil)
                     (bookbrainz--load-entity-async
                      entity-type bbid
                      (vui-async-callback (entity)
                        (vui-set-state :entity entity)
-                       (vui-set-state :loading nil))
+                       (vui-set-state :loading nil)
+                       (bookbrainz--load-aliases-async entity-type bbid)
+                       (bookbrainz--load-identifiers-async entity-type bbid)
+                       (bookbrainz--load-relationships-async entity-type bbid))
                      (vui-async-callback (err)
                        (vui-set-state :error (error-message-string err))
                        (vui-set-state :loading nil)))))))
@@ -636,10 +847,39 @@ Callbacks should be created with `vui-async-callback' or `vui-with-async-context
        (vui-text (bookbrainz--entity-type-label entity-type)))
       (vui-newline)
       (bb-detail (bb-entity-create entity-type bbid entity))
+      (when aliases
+        (vui-newline)
+        (bookbrainz--aliases-section aliases))
+      (when identifiers
+        (vui-newline)
+        (bookbrainz--identifiers-section identifiers))
+      (when relationships
+        (vui-newline)
+        (bookbrainz--relationships-section
+         relationships relationship-page 8 relationship-names
+         (lambda (page)
+           (vui-set-state :relationship-page page)
+           (bookbrainz--load-relationship-names
+            relationships page 8))))
+      (let ((fields (bookbrainz--entity-data-fields entity '(defaultAlias bbid))))
+        (when fields
+          (vui-newline)
+          (vui-collapsible :title "Entity Data"
+            (vui-hstack
+              (vui-button (if show-raw "Hide Full" "Show Full")
+                          :on-click (lambda ()
+                                      (vui-set-state :show-raw (not show-raw)))))
+            (apply #'vui-vstack :spacing 0
+                   (nconc fields
+                          (when show-raw
+                            (list (vui-text (let ((json-encoding-pretty-print t))
+                                              (json-encode entity))
+                                            :face 'shadow))))))))
       (vui-newline)
       (vui-hstack :spacing 0
         (vui-button "Save to Org"
-                    :on-click (lambda () (bookbrainz--save-to-org entity-type entity)))
+                    :on-click (lambda () (bookbrainz--save-to-org entity-type entity
+                                                                   aliases identifiers relationships)))
         (vui-button "Open in Browser"
                     :on-click (lambda ()
                                 (browse-url
@@ -669,20 +909,106 @@ Callbacks should be created with `vui-async-callback' or `vui-with-async-context
     (display-buffer buf)
     (message "Org properties shown in buffer *BB Org Properties*")))
 
-(defun bookbrainz--save-to-org (entity-type entity)
-  "Save ENTITY as an Org file with a :PROPERTIES: drawer.
+(defun bookbrainz--entity-info-to-org (entity)
+  "Format ENTITY alist simple fields as Org ** Entity Info section."
+  (let (pairs
+        (skip '(defaultAlias aliasSet identifierSet relationshipSet
+                collections reviews annotation revision dataId)))
+    (dolist (pair entity)
+      (let ((k (car pair))
+            (v (cdr pair)))
+        (when (and (symbolp k) (not (memq k skip))
+                   (or (stringp v) (numberp v) (booleanp v)))
+          (push (format "- %s :: %s" k v) pairs))))
+    (when pairs
+      (concat "** Entity Info\n"
+              (string-join (nreverse pairs) "\n") "\n"))))
+
+(defun bookbrainz--aliases-to-org (aliases)
+  "Format ALIASES as Org ** Aliases section."
+  (when aliases
+    (concat "** Aliases\n"
+            (mapconcat
+             (lambda (a)
+               (let ((name (or (alist-get 'name a) "(unnamed)"))
+                     (lang (alist-get 'language a))
+                     (sort (alist-get 'sortName a))
+                     (primary (alist-get 'primary a)))
+                  (concat "- " name
+                          (when lang (format " (%s%s)" lang (if primary " *" "")))
+                          (when (and sort (not (equal sort name)))
+                            (format " [%s]" sort)))))
+             aliases "\n") "\n")))
+
+(defun bookbrainz--identifiers-to-org (identifiers)
+  "Format IDENTIFIERS as Org ** Identifiers section."
+  (when identifiers
+    (concat "** Identifiers\n"
+            (mapconcat
+             (lambda (id)
+               (format "- %s :: %s"
+                       (or (alist-get 'type id) "unknown")
+                       (or (alist-get 'value id) "")))
+             identifiers "\n") "\n")))
+
+(defun bookbrainz--relationships-to-org (relationships)
+  "Format RELATIONSHIPS as Org ** Relationships section."
+  (when relationships
+    (concat "** Relationships\n"
+            (mapconcat
+             (lambda (r)
+               (let* ((type (or (alist-get 'relationshipTypeName r) "unknown"))
+                      (target (or (alist-get 'targetBbid r) ""))
+                      (target-type (or (alist-get 'targetEntityType r) ""))
+                      (phrase (or (alist-get 'linkPhrase r) "")))
+                 (format "- %s :: %s (%s) %s" type target target-type phrase)))
+             relationships "\n") "\n")))
+
+(defun bookbrainz--entity-data-to-org (entity)
+  "Format ENTITY raw fields as Org ** Entity Data section."
+  (let (pairs
+        (skip '(defaultAlias bbid)))
+    (dolist (pair entity)
+      (let ((k (car pair))
+            (v (cdr pair)))
+        (when (and (symbolp k) (not (memq k skip))
+                   (or (stringp v) (numberp v) (booleanp v)))
+          (push (format "- %s :: %s" k v) pairs))))
+    (when pairs
+      (concat "** Entity Data\n"
+              (string-join (nreverse pairs) "\n") "\n"))))
+
+(defun bookbrainz--entity-org-body (entity aliases identifiers relationships)
+  "Assemble Org body sections for ENTITY.
+Combines info, aliases, identifiers, relationships, and entity data sections."
+  (string-join
+   (delq nil
+     (list
+      (bookbrainz--entity-info-to-org entity)
+      (bookbrainz--aliases-to-org aliases)
+      (bookbrainz--identifiers-to-org identifiers)
+      (bookbrainz--relationships-to-org relationships)
+      (bookbrainz--entity-data-to-org entity)))
+   "\n"))
+
+(defun bookbrainz--save-to-org (entity-type entity &optional aliases identifiers relationships)
+  "Save ENTITY as an Org file with a :PROPERTIES: drawer and sections.
+ALIASES, IDENTIFIERS, RELATIONSHIPS are optional sub-endpoint data.
 File is created at `bookbrainz-org-dir'/TYPE/TIMESTAMP-SLUG.org."
   (let* ((title (bookbrainz--entity-name entity))
          (type-str entity-type)
          (props (bookbrainz--entity-to-org-properties entity-type entity))
          (org-dir (if (bound-and-true-p org-directory)
-                      (expand-file-name bookbrainz-org-dir org-directory)
-                    (expand-file-name bookbrainz-org-dir "~/")))
+                       (expand-file-name bookbrainz-org-dir org-directory)
+                     (expand-file-name bookbrainz-org-dir "~/")))
          (slug (replace-regexp-in-string "[^a-z0-9]+" "-" (downcase title)))
          (ts (format-time-string "%Y%m%d%H%M%S"))
          (file (expand-file-name (format "%s-%s.org" ts slug)
                                  (expand-file-name type-str org-dir)))
-         (content (format "* %s\n%s\n" title props)))
+         (body (bookbrainz--entity-org-body entity aliases identifiers relationships))
+         (content (if (string-empty-p body)
+                      (format "* %s\n%s\n" title props)
+                    (format "* %s\n%s\n%s\n" title props body))))
     (make-directory (file-name-directory file) t)
     (with-temp-file file
       (insert content))

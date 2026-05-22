@@ -281,3 +281,99 @@
                 (releaseEventDate . "+001954")
                 (editionFormat . "Paperback")))))
     (should (equal (bb-format-result e) "Test Ed (1954) [Paperback]"))))
+
+
+;;; Org integration
+
+(ert-deftest bookbrainz--entity-info-to-org-basic ()
+  (let ((entity '((name . "Test Entity")
+                   (type . "Author")
+                   (bbid . "bbid-abc")
+                   (defaultAlias (name . "Alias"))
+                   (disambiguation . "Note"))))
+    (should (string-match "\\*\\* Entity Info" (bookbrainz--entity-info-to-org entity)))
+    (should (string-match "- name :: Test Entity" (bookbrainz--entity-info-to-org entity)))
+    (should (string-match "- disambiguation :: Note" (bookbrainz--entity-info-to-org entity)))
+    (should-not (string-match "defaultAlias" (bookbrainz--entity-info-to-org entity)))))
+
+(ert-deftest bookbrainz--entity-info-to-org-nil ()
+  (should (equal (bookbrainz--entity-info-to-org nil) nil)))
+
+(ert-deftest bookbrainz--entity-info-to-org-skips-collections ()
+  (let ((entity '((name . "X") (collections . ((bbid . "c1"))))))
+    (should-not (string-match "collections" (bookbrainz--entity-info-to-org entity)))))
+
+(ert-deftest bookbrainz--aliases-to-org-basic ()
+  (let ((aliases '(((name . "Main Name") (language . "en") (primary . t)))))
+    (let ((result (bookbrainz--aliases-to-org aliases)))
+      (should (string-match "\\*\\* Aliases" result))
+      (should (string-match "- Main Name (en \\*)" result)))))
+
+(ert-deftest bookbrainz--aliases-to-org-with-sort ()
+  (let ((aliases '(((name . "John") (sortName . "Doe")))))
+    (let ((result (bookbrainz--aliases-to-org aliases)))
+      (should (string-match "- John \\[Doe\\]" result)))))
+
+(ert-deftest bookbrainz--aliases-to-org-nil ()
+  (should (equal (bookbrainz--aliases-to-org nil) nil)))
+
+(ert-deftest bookbrainz--aliases-to-org-empty ()
+  (should (equal (bookbrainz--aliases-to-org '()) nil)))
+
+(ert-deftest bookbrainz--aliases-to-org-no-language ()
+  (let ((aliases '(((name . "Plain")))))
+    (should (string-match "- Plain" (bookbrainz--aliases-to-org aliases)))
+    (should-not (string-match "(en)" (bookbrainz--aliases-to-org aliases)))))
+
+(ert-deftest bookbrainz--aliases-to-org-no-sort-when-equal ()
+  (let ((aliases '(((name . "Same") (sortName . "Same")))))
+    (let ((result (bookbrainz--aliases-to-org aliases)))
+      (should (string-match "- Same" result))
+      (should-not (string-match "\\[.*Same" result)))))
+
+(ert-deftest bookbrainz--identifiers-to-org-basic ()
+  (let ((ids '(((type . "ISBN") (value . "123-456")))))
+    (should (string-match "\\*\\* Identifiers" (bookbrainz--identifiers-to-org ids)))
+    (should (string-match "- ISBN :: 123-456" (bookbrainz--identifiers-to-org ids)))))
+
+(ert-deftest bookbrainz--identifiers-to-org-nil ()
+  (should (equal (bookbrainz--identifiers-to-org nil) nil)))
+
+(ert-deftest bookbrainz--identifiers-to-org-unknown-type ()
+  (let ((ids '(((value . "v1")))))
+    (should (string-match "unknown" (bookbrainz--identifiers-to-org ids)))))
+
+(ert-deftest bookbrainz--relationships-to-org-basic ()
+  (let ((rels '(((relationshipTypeName . "Author") (targetBbid . "bbid-x")
+                 (targetEntityType . "work") (linkPhrase . "wrote")))))
+    (should (string-match "\\*\\* Relationships" (bookbrainz--relationships-to-org rels)))
+    (should (string-match "Author :: bbid-x (work) wrote"
+                          (bookbrainz--relationships-to-org rels)))))
+
+(ert-deftest bookbrainz--relationships-to-org-nil ()
+  (should (equal (bookbrainz--relationships-to-org nil) nil)))
+
+(ert-deftest bookbrainz--entity-data-to-org-basic ()
+  (let ((entity '((name . "X") (type . "Author") (bbid . "bbid-1") (extra . "val"))))
+    (should (string-match "\\*\\* Entity Data" (bookbrainz--entity-data-to-org entity)))
+    (should (string-match "extra :: val" (bookbrainz--entity-data-to-org entity)))
+    (should-not (string-match "bbid" (bookbrainz--entity-data-to-org entity)))))
+
+(ert-deftest bookbrainz--entity-data-to-org-nil ()
+  (should (equal (bookbrainz--entity-data-to-org nil) nil)))
+
+(ert-deftest bookbrainz--entity-org-body-assembles-sections ()
+  (let* ((entity '((name . "Test")))
+         (aliases '(((name . "A1"))))
+         (ids '(((type . "ISBN") (value . "123"))))
+         (rels '(((relationshipTypeName . "Rel1") (targetBbid . "x")
+                  (targetEntityType . "work") (linkPhrase . "")))))
+    (let ((body (bookbrainz--entity-org-body entity aliases ids rels)))
+      (should (string-match "\\*\\* Entity Info" body))
+      (should (string-match "\\*\\* Aliases" body))
+      (should (string-match "\\*\\* Identifiers" body))
+      (should (string-match "\\*\\* Relationships" body))
+      (should (string-match "\\*\\* Entity Data" body)))))
+
+(ert-deftest bookbrainz--entity-org-body-nils-omitted ()
+  (should (equal (bookbrainz--entity-org-body nil nil nil nil) "")))

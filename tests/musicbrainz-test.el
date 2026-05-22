@@ -328,5 +328,217 @@
                      ac)
                    '((name . "A1"))))))
 
+
+;;; Format length
+
+(ert-deftest musicbrainz--format-length-seconds ()
+  (should (equal (musicbrainz--format-length 245000) "4:05")))
+
+(ert-deftest musicbrainz--format-length-zero ()
+  (should (equal (musicbrainz--format-length 0) "0:00")))
+
+(ert-deftest musicbrainz--format-length-nil ()
+  (should (equal (musicbrainz--format-length nil) nil)))
+
+(ert-deftest musicbrainz--format-length-exact-minute ()
+  (should (equal (musicbrainz--format-length 60000) "1:00")))
+
+
+;;; Track helpers
+
+(ert-deftest musicbrainz--track-title-direct ()
+  (should (equal (musicbrainz--track-title '((title . "My Track")))
+                 "My Track")))
+
+(ert-deftest musicbrainz--track-title-from-recording ()
+  (should (equal (musicbrainz--track-title '((recording (title . "Rec Title"))))
+                 "Rec Title")))
+
+(ert-deftest musicbrainz--track-title-fallback ()
+  (should (equal (musicbrainz--track-title '((number . "1")))
+                 "(untitled)")))
+
+(ert-deftest musicbrainz--track-title-prefers-direct ()
+  (should (equal (musicbrainz--track-title '((title . "Direct")
+                                              (recording (title . "Rec"))))
+                 "Direct")))
+
+(ert-deftest musicbrainz--track-artist-str-direct ()
+  (let ((track '((artist-credit ((name . "Artist1") (joinphrase . ", "))
+                                ((name . "Artist2"))))))
+    (should (equal (musicbrainz--track-artist-str track) "Artist1, Artist2"))))
+
+(ert-deftest musicbrainz--track-artist-str-from-recording ()
+  (let ((track '((recording (artist-credit ((name . "A1")))))))
+    (should (equal (musicbrainz--track-artist-str track) "A1"))))
+
+(ert-deftest musicbrainz--track-artist-str-nil ()
+  (should (equal (musicbrainz--track-artist-str '((title . "X"))) nil)))
+
+(ert-deftest musicbrainz--relation-target-name-url ()
+  (let ((rel '((target-type . "url") (url (resource . "https://x.com")))))
+    (should (equal (musicbrainz--relation-target-name rel) "https://x.com"))))
+
+(ert-deftest musicbrainz--relation-target-name-entity-name ()
+  (let ((rel '((target-type . "artist") (artist (name . "Bach")))))
+    (should (equal (musicbrainz--relation-target-name rel) "Bach"))))
+
+(ert-deftest musicbrainz--relation-target-name-entity-title ()
+  (let ((rel '((target-type . "release") (release (title . "Album")))))
+    (should (equal (musicbrainz--relation-target-name rel) "Album"))))
+
+(ert-deftest musicbrainz--relation-target-name-unknown ()
+  (let ((rel '((target-type . "artist"))))
+    (should (equal (musicbrainz--relation-target-name rel) "(unnamed)"))))
+
+(ert-deftest musicbrainz--relation-attributes-str-basic ()
+  (let ((rel '((attributes "designer" "translator"))))
+    (should (equal (musicbrainz--relation-attributes-str rel) "(designer, translator)"))))
+
+(ert-deftest musicbrainz--relation-attributes-str-single ()
+  (let ((rel '((attributes "designer"))))
+    (should (equal (musicbrainz--relation-attributes-str rel) "(designer)"))))
+
+(ert-deftest musicbrainz--relation-attributes-str-nil ()
+  (should (equal (musicbrainz--relation-attributes-str '((type . "X"))) nil)))
+
+(ert-deftest musicbrainz--relation-credit-str-source ()
+  (let ((rel '((source-credit . "SrcCred"))))
+    (should (equal (musicbrainz--relation-credit-str rel) "SrcCred"))))
+
+(ert-deftest musicbrainz--relation-credit-str-target ()
+  (let ((rel '((target-credit . "TgtCred"))))
+    (should (equal (musicbrainz--relation-credit-str rel) "TgtCred"))))
+
+(ert-deftest musicbrainz--relation-credit-str-source-preferred ()
+  (let ((rel '((source-credit . "Src") (target-credit . "Tgt"))))
+    (should (equal (musicbrainz--relation-credit-str rel) "Src"))))
+
+(ert-deftest musicbrainz--relation-credit-str-nil ()
+  (should (equal (musicbrainz--relation-credit-str '((type . "X"))) nil)))
+
+
+;;; Org integration
+
+(ert-deftest musicbrainz--entity-info-to-org-basic ()
+  (let ((entity '((name . "Test") (type . "Person") (id . "mbid-x"))))
+    (let ((result (musicbrainz--entity-info-to-org entity)))
+      (should (string-match "\\*\\* Entity Info" result))
+      (should (string-match "- type :: Person" result))
+      (should-not (string-match "id" result)))))
+
+(ert-deftest musicbrainz--entity-info-to-org-skips-complex ()
+  (let ((entity '((name . "X") (relations . ((type . "rel"))) (tags . ((name . "t1"))))))
+    (let ((result (musicbrainz--entity-info-to-org entity)))
+      (should (equal result nil))
+      (should-not (string-match "relations" (or result "")))
+      (should-not (string-match "tags" (or result ""))))))
+
+(ert-deftest musicbrainz--entity-info-to-org-nil ()
+  (should (equal (musicbrainz--entity-info-to-org '((id . "x"))) nil)))
+
+(ert-deftest musicbrainz--tracklist-to-org-basic ()
+  (let ((entity '((media . (((position . 1) (title . "Vinyl")
+                             (format . "LP") (track-count . 2)
+                             (tracks . (((number . "A1") (title . "Song1")
+                                         (length . 240000))
+                                        ((number . "A2") (title . "Song2")
+                                         (length . 180000))))))))))
+    (let ((result (musicbrainz--tracklist-to-org entity)))
+      (should (string-match "\\*\\* Tracklist" result))
+      (should (string-match "1 Vinyl (LP)" result))
+      (should (string-match "A1. Song1.*4:00" result))
+      (should (string-match "A2. Song2.*3:00" result)))))
+
+(ert-deftest musicbrainz--tracklist-to-org-nil ()
+  (should (equal (musicbrainz--tracklist-to-org '((id . "x"))) nil)))
+
+(ert-deftest musicbrainz--credits-to-org-basic ()
+  (let ((entity '((relations . (((type . "composer") (target-type . "artist")
+                                 (artist (name . "Bach"))))))))
+    (let ((result (musicbrainz--credits-to-org entity)))
+      (should (string-match "\\*\\* Credits" result))
+      (should (string-match "- composer :: Bach" result)))))
+
+(ert-deftest musicbrainz--credits-to-org-with-attrs ()
+  (let ((entity '((relations . (((type . "translator") (target-type . "artist")
+                                 (artist (name . "X")) (attributes "lang")))))))
+    (let ((result (musicbrainz--credits-to-org entity)))
+      (should (string-match "translator :: X.*lang" result)))))
+
+(ert-deftest musicbrainz--credits-to-org-nil ()
+  (should (equal (musicbrainz--credits-to-org '((id . "x"))) nil)))
+
+(ert-deftest musicbrainz--tags-to-org-basic ()
+  (let ((entity '((tags . (((name . "rock")) ((name . "jazz")))))))
+    (let ((result (musicbrainz--tags-to-org entity)))
+      (should (string-match "\\*\\* Tags" result))
+      (should (string-match "- rock" result))
+      (should (string-match "- jazz" result)))))
+
+(ert-deftest musicbrainz--tags-to-org-nil ()
+  (should (equal (musicbrainz--tags-to-org '((id . "x"))) nil)))
+
+(ert-deftest musicbrainz--entity-data-to-org-basic ()
+  (let ((json-ld '((@type . "MusicArtist") (@id . "mbid-x")
+                    (mb-type . "artist") (name . "X")
+                    (extra . "val"))))
+    (let ((result (musicbrainz--entity-data-to-org json-ld)))
+      (should (string-match "\\*\\* Entity Data" result))
+      (should (string-match "- extra :: val" result))
+      (should-not (string-match "@type" result))
+      (should-not (string-match "mb-type" result)))))
+
+(ert-deftest musicbrainz--entity-data-to-org-nil ()
+  (should (equal (musicbrainz--entity-data-to-org nil) nil)))
+
+(ert-deftest musicbrainz--entity-org-body-assembles-sections ()
+  (let* ((entity '((name . "Test") (type . "Artist")))
+         (json-ld '((@type . "Thing") (mb-type . "test") (extra . "val"))))
+    (let ((body (musicbrainz--entity-org-body entity json-ld)))
+      (should (string-match "\\*\\* Entity Info" body))
+      (should (string-match "- type :: Artist" body))
+      (should (string-match "\\*\\* Entity Data" body))
+      (should (string-match "- extra :: val" body)))))
+
+(ert-deftest musicbrainz--entity-org-body-nil-json-ld ()
+  (let* ((entity '((name . "Test") (type . "Artist")))
+         (body (musicbrainz--entity-org-body entity nil)))
+    (should (string-match "\\*\\* Entity Info" body))
+    (should (string-match "- type :: Artist" body))
+    (should-not (string-match "\\*\\* Entity Data" body))))
+
+
+;;; JSON-LD helpers
+
+(ert-deftest musicbrainz--json-ld-pluck-simple ()
+  (let ((data '((@type . "MusicArtist") (name . "Bach"))))
+    (should (equal (musicbrainz--json-ld-pluck data '("name")) "Bach"))))
+
+(ert-deftest musicbrainz--json-ld-pluck-nested ()
+  (let ((data '((area (name . "Germany")))))
+    (should (equal (musicbrainz--json-ld-pluck data '("area" "name")) "Germany"))))
+
+(ert-deftest musicbrainz--json-ld-pluck-missing ()
+  (should (equal (musicbrainz--json-ld-pluck '((name . "X")) '("missing")) nil)))
+
+(ert-deftest musicbrainz--json-ld-pluck-nil-path ()
+  (let ((data '((a . 1))))
+    (should (equal (musicbrainz--json-ld-pluck data nil) data))))
+
+(ert-deftest musicbrainz--build-json-ld-from-entity-basic ()
+  (let ((result (musicbrainz--build-json-ld-from-entity
+                 "artist" '((name . "Bach") (type . "Person")) "mbid-x")))
+    (should (equal (alist-get '@type result) "MusicArtist"))
+    (should (string-match "musicbrainz.org/artist/mbid-x"
+                          (alist-get '@id result)))
+    (should (equal (alist-get 'name result) "Bach"))
+    (should (equal (alist-get 'type result) "Person"))))
+
+(ert-deftest musicbrainz--build-json-ld-from-entity-unknown-type ()
+  (let ((result (musicbrainz--build-json-ld-from-entity
+                 "custom" '((name . "X")) "mbid-y")))
+    (should (equal (alist-get '@type result) "Thing"))))
+
 (provide 'musicbrainz-test)
 ;;; musicbrainz-test.el ends here
